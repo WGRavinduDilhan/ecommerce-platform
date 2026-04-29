@@ -1,0 +1,57 @@
+const productBaseUrl = import.meta.env.VITE_PRODUCT_API_URL || 'http://localhost:8000';
+const orderBaseUrl = import.meta.env.VITE_ORDER_API_URL || 'http://localhost:3000';
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const body = contentType.includes('application/json') ? await response.json() : await response.text();
+
+  if (!response.ok) {
+    const message = body?.error || body?.detail || body || 'Request failed';
+    throw new Error(message);
+  }
+
+  return body;
+}
+
+export function getProducts() {
+  return requestJson(`${productBaseUrl}/products`);
+}
+
+export function createProduct(payload) {
+  return requestJson(`${productBaseUrl}/products`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateProduct(productId, payload) {
+  return requestJson(`${productBaseUrl}/products/${productId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteProduct(productId) {
+  return requestJson(`${productBaseUrl}/products/${productId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function getOrders() {
+  return requestJson(`${orderBaseUrl}/orders`);
+}
+
+export function createOrder(payload) {
+  return requestJson(`${orderBaseUrl}/orders`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}

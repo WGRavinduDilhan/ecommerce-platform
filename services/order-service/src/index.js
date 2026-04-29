@@ -2,8 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const axios = require('axios');
+const cors = require('cors');
 const app = express();
 app.use(express.json());
+app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173' }));
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const PRODUCT_URL = process.env.PRODUCT_SERVICE_URL || 'http://product-service:8000';
@@ -18,6 +20,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok', service: 'order-servic
 
 app.post('/orders', async (req, res) => {
   const { product_id, quantity } = req.body;
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({ error: 'Quantity must be a positive integer' });
+  }
   try {
     const { data: product } = await axios.get(`${PRODUCT_URL}/products/${product_id}`);
     if (product.stock < quantity)
@@ -26,6 +31,9 @@ app.post('/orders', async (req, res) => {
       'INSERT INTO orders (product_id,quantity,status) VALUES ($1,$2,$3) RETURNING *',
       [product_id, quantity, 'confirmed']
     );
+    await axios.put(`${PRODUCT_URL}/products/${product_id}`, {
+      stock: product.stock - quantity,
+    });
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.response?.status === 404) return res.status(404).json({ error: 'Product not found' });
