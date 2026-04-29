@@ -1,2 +1,8 @@
 # ecommerce-platform
 Simple Ecommers platforme to integrate Two small services like Product service and Order service each with their own DB, container, and deployment. An API Gateway or Nginx ingress routes between them.
+
+main.py: Entrypoint HTTP API that creates the FastAPI app, registers routes (health, list/create/get products), and initializes DB tables on startup. Uses the request/response schemas and Depends(database.get_db) to obtain sessions. See services/product-service/app/main.py.
+database.py: SQLAlchemy configuration — builds the engine, SessionLocal, and Base, and provides the get_db() dependency (yields DB sessions). The code chooses a safe local SQLite fallback if DATABASE_URL is not set. See services/product-service/app/database.py.
+models.py: ORM models (table definitions). Defines the Product mapped class (columns, types, primary key). These classes drive table creation and are what the app queries/commits. See services/product-service/app/models.py.
+schemas.py: Pydantic data models for validation and serialization (request body and response shapes). Contains ProductCreate (input) and ProductRead (output) so FastAPI can validate input and produce JSON responses; ProductRead is configured to read attributes from ORM objects. See services/product-service/app/schemas.py.
+How they work together (one line): routes in main.py accept/return Pydantic schemas, use get_db() from database.py to get a SQLAlchemy session, and use models.py ORM classes to query/update the DB; schemas.py maps the ORM objects to JSON responses

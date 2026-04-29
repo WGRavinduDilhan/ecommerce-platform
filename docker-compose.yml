@@ -1,0 +1,29 @@
+version: '3.9'
+services:
+  product-db:
+    image: postgres:15-alpine
+    environment: { POSTGRES_USER: user, POSTGRES_PASSWORD: password, POSTGRES_DB: productdb }
+    ports: ["5432:5432"]
+    volumes: [product-db-data:/var/lib/postgresql/data]
+
+  order-db:
+    image: postgres:15-alpine
+    environment: { POSTGRES_USER: user, POSTGRES_PASSWORD: password, POSTGRES_DB: orderdb }
+    ports: ["5433:5432"]
+    volumes: [order-db-data:/var/lib/postgresql/data]
+
+  product-service:
+    build: ./services/product-service
+    ports: ["8000:8000"]
+    environment: { DATABASE_URL: postgresql://user:password@product-db/productdb }
+    depends_on: [product-db]
+
+  order-service:
+    build: ./services/order-service
+    ports: ["3000:3000"]
+    environment:
+      DATABASE_URL: postgresql://user:password@order-db/orderdb
+      PRODUCT_SERVICE_URL: http://product-service:8000
+    depends_on: [product-db, product-service]
+
+volumes: { product-db-data: {}, order-db-data: {} }
