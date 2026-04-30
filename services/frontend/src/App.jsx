@@ -465,7 +465,7 @@ function CartPage({ cart, onRemove, onCheckout, activeUser }) {
           <p>Total</p>
           <strong>{currency(total)}</strong>
         </div>
-        <button className="primary-button" onClick={onCheckoutStart} disabled={!cart.items.length}>
+        <button className="primary-button" onClick={onCheckout} disabled={!cart.items.length}>
           Checkout
         </button>
       </div>
