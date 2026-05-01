@@ -45,8 +45,9 @@ export function deleteProduct(productId) {
   });
 }
 
-export function getOrders() {
-  return requestJson(`${orderBaseUrl}/orders`);
+export function getOrders(userEmail = null) {
+  const url = userEmail ? `${orderBaseUrl}/orders?user_email=${encodeURIComponent(userEmail)}` : `${orderBaseUrl}/orders`;
+  return requestJson(url);
 }
 
 export function createOrder(payload) {
