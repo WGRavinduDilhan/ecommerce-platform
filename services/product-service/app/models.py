@@ -11,3 +11,4 @@ class Product(Base):
     category = Column(String)
     price = Column(Float, nullable=False)
     stock = Column(Integer, default=0)
+    image = Column(String, nullable=True)

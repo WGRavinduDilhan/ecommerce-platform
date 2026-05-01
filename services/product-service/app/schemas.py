@@ -6,6 +6,7 @@ class ProductBase(BaseModel):
     category: str
     price: float
     stock: int
+    image: str | None = None
 
 
 class ProductCreate(ProductBase):
@@ -17,6 +18,7 @@ class ProductUpdate(BaseModel):
     category: str | None = None
     price: float | None = None
     stock: int | None = None
+    image: str | None = None
 
 
 class ProductRead(ProductBase):
