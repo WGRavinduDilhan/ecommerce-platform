@@ -21,28 +21,36 @@ export function Orders() {
       navigate('/auth?mode=login');
       return;
     }
-    
+
+    const controller = new AbortController();
+
     async function fetchData() {
       try {
         const [ordersData, productsData] = await Promise.all([
           getOrders(user.email),
-          getProducts()
+          getProducts(controller.signal),
         ]);
-        
+
         // Map products for quick lookup
         const prodMap = {};
         productsData.forEach(p => { prodMap[p.id] = p; });
-        
+
         setProducts(prodMap);
         setOrders(ordersData);
       } catch (err) {
-        toast.error('Failed to load orders.');
+        if (err.name !== 'AbortError') {
+          toast.error('Failed to load orders.');
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
-    
+
     fetchData();
+
+    return () => controller.abort();
   }, [user, navigate]);
 
   return (

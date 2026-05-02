@@ -10,17 +10,27 @@ export function Home() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
+    const controller = new AbortController();
+
     async function fetchProducts() {
       try {
-        const data = await getProducts();
+        const data = await getProducts(controller.signal);
         setProducts(data);
       } catch (err) {
-        toast.error('Failed to load products.');
+        // Ignore AbortError — caused by React StrictMode double-invoke cleanup
+        if (err.name !== 'AbortError') {
+          toast.error('Failed to load products.');
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
+
     fetchProducts();
+
+    return () => controller.abort();
   }, []);
 
   const filteredProducts = products.filter(p => 
