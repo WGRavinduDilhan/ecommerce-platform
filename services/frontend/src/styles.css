@@ -881,10 +881,11 @@ input:focus {
   background: var(--surface-alt);
   color: var(--text-muted);
   transition: all 0.2s;
+  overflow: hidden;
 }
 .file-input-wrapper:hover { border-color: var(--primary); color: var(--primary); }
 .file-input-wrapper input {
-  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
 }
 .img-preview { margin-top: 1rem; width: 100%; height: 200px; object-fit: cover; border-radius: var(--radius-md); }
 
@@ -912,4 +913,119 @@ input:focus {
   .cart-layout, .checkout-layout { grid-template-columns: 1fr; }
   .admin-dashboard { grid-template-columns: 1fr; }
   .admin-sidebar { position: static; }
+  .payment-grid { grid-template-columns: 1fr; }
 }
+
+/* Admin Stats Bar */
+.admin-stats-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+
+.admin-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: box-shadow 0.2s;
+}
+
+.admin-stat-card:hover { box-shadow: var(--shadow-md); }
+
+.admin-stat-card svg { color: var(--primary); flex-shrink: 0; }
+
+.admin-stat-card div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.admin-stat-card strong {
+  font-size: 1.5rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.admin-stat-card span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+@media (max-width: 768px) {
+  .admin-stats-bar { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Form Validation */
+.input-error {
+  border-color: var(--error) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+}
+
+.field-error {
+  font-size: 0.8rem;
+  color: var(--error);
+  font-weight: 500;
+}
+
+/* Stock Level Colors */
+.warn-text { color: var(--warning); font-weight: 600; }
+
+/* Admin Orders Table Product Cell */
+.order-product-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.table-img-sm {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/* Image Preview Container */
+.img-preview-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.img-preview-container .text-button {
+  font-size: 0.8rem;
+  align-self: flex-start;
+}
+
+/* Spacing Utilities */
+.mt-2 { margin-top: 0.5rem; }
+.mt-4 { margin-top: 1rem; }
+
+/* Login hint in cart */
+.login-hint {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.75rem;
+}
+
+/* Empty Cart State */
+.empty-cart-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  gap: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+

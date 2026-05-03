@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { createOrder } from '../api';
@@ -25,15 +25,14 @@ export function Checkout() {
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  if (!user) {
-    navigate('/auth?mode=login');
-    return null;
-  }
-
-  if (cart.items.length === 0 && !success) {
-    navigate('/cart');
-    return null;
-  }
+  // Guard redirects in useEffect — calling navigate() during render is a React anti-pattern
+  useEffect(() => {
+    if (!user) {
+      navigate('/auth?mode=login');
+    } else if (cart.items.length === 0 && !success) {
+      navigate('/cart');
+    }
+  }, [user, cart.items.length, success, navigate]);
 
   const handlePay = async () => {
     if (!selectedMethod) {

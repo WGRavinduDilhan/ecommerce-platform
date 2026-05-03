@@ -2,12 +2,14 @@ const productBaseUrl = import.meta.env.VITE_PRODUCT_API_URL || 'http://localhost
 const orderBaseUrl = import.meta.env.VITE_ORDER_API_URL || 'http://localhost:3000';
 
 async function requestJson(url, options = {}) {
+  const { signal, ...rest } = options;
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
+      ...(rest.headers || {}),
     },
-    ...options,
+    signal,
+    ...rest,
   });
 
   const contentType = response.headers.get('content-type') || '';
@@ -21,8 +23,8 @@ async function requestJson(url, options = {}) {
   return body;
 }
 
-export function getProducts() {
-  return requestJson(`${productBaseUrl}/products`);
+export function getProducts(signal) {
+  return requestJson(`${productBaseUrl}/products`, { signal });
 }
 
 export function createProduct(payload) {
