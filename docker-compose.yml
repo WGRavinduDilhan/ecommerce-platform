@@ -24,7 +24,7 @@ services:
       DATABASE_URL: postgresql://user:password@order-db/orderdb
       PRODUCT_SERVICE_URL: http://product-service:8000
       FRONTEND_ORIGIN: http://localhost:5173
-    depends_on: [product-db, product-service]
+    depends_on: [order-db, product-service]
 
   frontend:
     build: ./services/frontend
