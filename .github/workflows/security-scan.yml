@@ -11,7 +11,9 @@ on:
 
 permissions:
   contents: read
+  actions: read
   security-events: write
+  pull-requests: read
 
 jobs:
   dependency-scan:
@@ -66,7 +68,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: semgrep.sarif
@@ -116,7 +118,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-${{ matrix.service }}.sarif'
@@ -141,6 +143,11 @@ jobs:
 
   codeql-analysis:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+      pull-requests: read
     strategy:
       fail-fast: false
       matrix:
@@ -149,18 +156,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           queries: security-and-quality
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: '/language:${{ matrix.language }}'
+          upload: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
 
   security-summary:
     needs: [dependency-scan, python-dependency-scan, sast-scan, container-scan, secrets-scan, codeql-analysis]
