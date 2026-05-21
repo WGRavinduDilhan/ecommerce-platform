@@ -23,8 +23,15 @@ async function requestJson(url, options = {}) {
   return body;
 }
 
-export function getProducts(signal) {
-  return requestJson(`${productBaseUrl}/products`, { signal });
+export function getProducts(signal, filters = {}) {
+  const query = new URLSearchParams();
+  if (filters.sellerEmail) query.set('seller_email', filters.sellerEmail);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return requestJson(`${productBaseUrl}/products${suffix}`, { signal });
+}
+
+export function getSellerProducts(sellerEmail, signal) {
+  return getProducts(signal, { sellerEmail });
 }
 
 export function createProduct(payload) {

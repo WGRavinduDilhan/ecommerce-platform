@@ -10,6 +10,7 @@ import { Checkout } from './pages/Checkout';
 import { Orders } from './pages/Orders';
 import { Auth } from './pages/Auth';
 import { Admin } from './pages/Admin';
+import { Seller } from './pages/Seller';
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/seller" element={<Seller />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
