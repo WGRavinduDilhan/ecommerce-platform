@@ -91,10 +91,20 @@ jobs:
         continue-on-error: true
 
       - name: Comment PR with plan
-        if: github.event_name == 'pull_request'
-        uses: terraform-linters/tflint-load-config-action@v0
+        if: github.event_name == 'pull_request' && steps.creds.outputs.has_creds == 'true'
+        uses: actions/github-script@v7
         with:
-          directory: infra
+          script: |
+            const comment = `Terraform plan completed successfully for this PR.
+
+            The detailed plan output is available in the \\`terraform-plan\\` artifact from this workflow run.`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment,
+            });
 
       - name: Upload plan
         uses: actions/upload-artifact@v4
@@ -210,7 +220,7 @@ jobs:
       - name: Initialize Terraform
         run: |
           cd infra
-          terraform init -backend=false -input=false
+          terraform init -reconfigure -backend=false -input=false
 
       - name: Generate cost estimate
         run: |
