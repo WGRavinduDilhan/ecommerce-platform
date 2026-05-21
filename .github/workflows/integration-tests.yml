@@ -37,8 +37,9 @@ jobs:
       - name: Run Product Service tests
         run: |
           cd services/product-service
+          export PYTHONPATH="$PWD:$PYTHONPATH"
           python -m pip install -r requirements.txt
-          pytest -v --tb=short
+          python -m pytest -v --tb=short
 
       - name: Test Product API endpoints
         run: |
