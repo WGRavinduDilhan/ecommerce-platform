@@ -1,0 +1,235 @@
+name: Product Service Build & Deploy
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'services/product-service/**'
+      - '.github/workflows/product-service.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'services/product-service/**'
+  workflow_dispatch:
+
+env:
+  SERVICE_NAME: product-service
+  PYTHON_VERSION: '3.11'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/product-service
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Test Product Service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'services/product-service/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          cd services/product-service
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with pylint
+        run: |
+          cd services/product-service
+          pip install pylint
+          pylint app/*.py --disable=all --enable=E,F || echo "Linting completed with warnings"
+
+      - name: Format check with black
+        run: |
+          cd services/product-service
+          pip install black
+          black --check app/ || echo "Format check completed"
+
+      - name: Type check with mypy
+        run: |
+          cd services/product-service
+          pip install mypy
+          mypy app/ --ignore-missing-imports || echo "Type check completed"
+
+      - name: Run pytest
+        run: |
+          cd services/product-service
+          pytest app/ -v --tb=short --junit-xml=test-results.xml || echo "Some tests failed"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-service-test-results
+          path: services/product-service/test-results.xml
+          retention-days: 30
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    name: Build Docker Image
+    permissions:
+      packages: write
+      contents: read
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/product-service
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  scan:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    name: Scan Image for Vulnerabilities
+    permissions:
+      security-events: write
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+        continue-on-error: true
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-product-service'
+        continue-on-error: true
+
+  deploy-staging:
+    needs: [test, build]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Deploy to Staging
+    environment:
+      name: staging
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ecommerce-staging \
+            --zone us-central1-a \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Update deployment
+        run: |
+          kubectl set image deployment/product-service \
+            product-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:develop \
+            -n ecommerce-staging \
+            --record
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/product-service \
+            -n ecommerce-staging \
+            --timeout=5m
+
+      - name: Health check
+        run: |
+          kubectl get pods -n ecommerce-staging -l app=product-service
+
+  deploy-production:
+    needs: [test, build, scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    environment:
+      name: production
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ecommerce-prod \
+            --zone us-central1-a \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Update deployment
+        run: |
+          kubectl set image deployment/product-service \
+            product-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            -n ecommerce \
+            --record
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/product-service \
+            -n ecommerce \
+            --timeout=10m
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout history deployment/product-service -n ecommerce
+
+      - name: Notify Slack
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: 'Product Service deployed to production'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true

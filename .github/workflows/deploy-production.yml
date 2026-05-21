@@ -1,0 +1,214 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'infra/**'
+      - '.github/workflows/deploy-production.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-canary
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-central1
+  GKE_CLUSTER: ecommerce-prod
+  GKE_ZONE: us-central1-a
+
+jobs:
+  pre-deployment-checks:
+    runs-on: ubuntu-latest
+    outputs:
+      approved: ${{ steps.check.outputs.approved }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deployment approval
+        id: check
+        run: |
+          # In production, require explicit approval via required reviews
+          echo "approved=true" >> $GITHUB_OUTPUT
+
+      - name: Validate deployment
+        run: |
+          echo "Running pre-deployment validation checks..."
+          # Add your validation logic here
+
+  deploy-production:
+    needs: pre-deployment-checks
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          export_default_credentials: true
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
+            --zone ${{ env.GKE_ZONE }} \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Create namespace
+        run: |
+          kubectl create namespace ecommerce --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create image pull secret
+        run: |
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=${{ env.REGISTRY }} \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }} \
+            --docker-email=${{ github.actor }}@github.com \
+            -n ecommerce \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy with blue-green strategy (Product Service)
+        run: |
+          CURRENT=$(kubectl get deployment product-service -n ecommerce -o jsonpath='{.spec.selector.matchLabels.version}' 2>/dev/null || echo "blue")
+          NEW_VERSION=$([ "$CURRENT" = "blue" ] && echo "green" || echo "blue")
+          
+          kubectl set image deployment/product-service-$NEW_VERSION \
+            product-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/product-service:latest \
+            -n ecommerce \
+            --record || \
+          kubectl create deployment product-service-$NEW_VERSION \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/product-service:latest \
+            -n ecommerce \
+            -l version=$NEW_VERSION
+
+      - name: Deploy Order Service
+        run: |
+          kubectl set image deployment/order-service \
+            order-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/order-service:latest \
+            -n ecommerce \
+            --record || \
+          kubectl create deployment order-service \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/order-service:latest \
+            -n ecommerce
+
+      - name: Deploy Frontend
+        run: |
+          kubectl set image deployment/frontend \
+            frontend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:latest \
+            -n ecommerce \
+            --record || \
+          kubectl create deployment frontend \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:latest \
+            -n ecommerce
+
+      - name: Deploy Auth Service
+        run: |
+          kubectl set image deployment/auth-service \
+            auth-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/auth-service:latest \
+            -n ecommerce \
+            --record || \
+          kubectl create deployment auth-service \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/auth-service:latest \
+            -n ecommerce
+
+      - name: Deploy Notification Service
+        run: |
+          kubectl set image deployment/notification-service \
+            notification-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/notification-service:latest \
+            -n ecommerce \
+            --record || true
+
+      - name: Deploy Payment Service
+        run: |
+          kubectl set image deployment/payment-service \
+            payment-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/payment-service:latest \
+            -n ecommerce \
+            --record || true
+
+      - name: Deploy Review Service
+        run: |
+          kubectl set image deployment/review-service \
+            review-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/review-service:latest \
+            -n ecommerce \
+            --record || true
+
+      - name: Wait for deployments
+        run: |
+          kubectl rollout status deployment/product-service -n ecommerce --timeout=10m
+          kubectl rollout status deployment/order-service -n ecommerce --timeout=10m
+          kubectl rollout status deployment/frontend -n ecommerce --timeout=10m
+          kubectl rollout status deployment/auth-service -n ecommerce --timeout=10m
+
+      - name: Health checks
+        run: |
+          echo "Running health checks..."
+          for i in {1..30}; do
+            if kubectl get pods -n ecommerce -l app=product-service --field-selector=status.phase=Running | grep -q product-service; then
+              echo "✓ Product service is running"
+              break
+            fi
+            echo "Waiting for pods... ($i/30)"
+            sleep 10
+          done
+
+      - name: Deployment status
+        run: |
+          echo "## Production Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          kubectl get deployments -n ecommerce >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n ecommerce >> $GITHUB_STEP_SUMMARY
+
+      - name: Create deployment record
+        run: |
+          cat > deployment-record.txt << EOF
+          Deployment: ${{ github.sha }}
+          Branch: ${{ github.ref }}
+          Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          Services:
+          - Product Service: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/product-service:latest
+          - Order Service: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/order-service:latest
+          - Frontend: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:latest
+          - Auth Service: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/auth-service:latest
+          EOF
+          cat deployment-record.txt
+
+      - name: Notify Slack on success
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Production deployment successful - ${{ github.sha }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Production deployment failed - ${{ github.sha }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true

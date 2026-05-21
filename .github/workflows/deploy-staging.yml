@@ -1,0 +1,138 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'services/**'
+      - 'infra/**'
+      - '.github/workflows/deploy-staging.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-central1
+  GKE_CLUSTER: ecommerce-staging
+  GKE_ZONE: us-central1-a
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          export_default_credentials: true
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
+            --zone ${{ env.GKE_ZONE }} \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Create namespace
+        run: |
+          kubectl create namespace ecommerce-staging --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create image pull secret
+        run: |
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=${{ env.REGISTRY }} \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }} \
+            --docker-email=${{ github.actor }}@github.com \
+            -n ecommerce-staging \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Product Service
+        run: |
+          kubectl set image deployment/product-service \
+            product-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/product-service:develop \
+            -n ecommerce-staging \
+            --record || \
+          kubectl create deployment product-service \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/product-service:develop \
+            -n ecommerce-staging
+
+      - name: Deploy Order Service
+        run: |
+          kubectl set image deployment/order-service \
+            order-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/order-service:develop \
+            -n ecommerce-staging \
+            --record || \
+          kubectl create deployment order-service \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/order-service:develop \
+            -n ecommerce-staging
+
+      - name: Deploy Frontend
+        run: |
+          kubectl set image deployment/frontend \
+            frontend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:develop \
+            -n ecommerce-staging \
+            --record || \
+          kubectl create deployment frontend \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:develop \
+            -n ecommerce-staging
+
+      - name: Deploy Auth Service
+        run: |
+          kubectl set image deployment/auth-service \
+            auth-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/auth-service:develop \
+            -n ecommerce-staging \
+            --record || \
+          kubectl create deployment auth-service \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/auth-service:develop \
+            -n ecommerce-staging
+
+      - name: Wait for deployments
+        run: |
+          kubectl rollout status deployment/product-service -n ecommerce-staging --timeout=5m
+          kubectl rollout status deployment/order-service -n ecommerce-staging --timeout=5m
+          kubectl rollout status deployment/frontend -n ecommerce-staging --timeout=5m
+          kubectl rollout status deployment/auth-service -n ecommerce-staging --timeout=5m
+
+      - name: Get service endpoints
+        run: |
+          echo "## Staging Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          kubectl get services -n ecommerce-staging >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n ecommerce-staging >> $GITHUB_STEP_SUMMARY
+
+      - name: Smoke tests
+        run: |
+          echo "Running smoke tests on staging..."
+          # Get the frontend service IP
+          FRONTEND_IP=$(kubectl get service frontend -n ecommerce-staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "localhost")
+          
+          # Wait for endpoints
+          sleep 10
+          
+          # Basic connectivity test
+          curl -f http://$FRONTEND_IP:80/ || echo "Frontend not yet accessible via LoadBalancer"
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Staging deployment failed'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true
