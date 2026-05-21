@@ -168,7 +168,7 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: '/language:${{ matrix.language }}'
-          upload: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+          upload: never
 
   security-summary:
     needs: [dependency-scan, python-dependency-scan, sast-scan, container-scan, secrets-scan, codeql-analysis]
