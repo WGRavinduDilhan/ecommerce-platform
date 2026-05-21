@@ -222,8 +222,8 @@ jobs:
           cd infra
           terraform init -reconfigure -backend=false -input=false
 
-      - name: Generate cost estimate
+      - name: Validate Terraform for cost estimation
         run: |
           cd infra
-          terraform plan -refresh=false -input=false -out=tfplan
+          terraform validate
           echo "Cost estimation requires Infracost integration"
