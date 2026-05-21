@@ -30,6 +30,9 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
+# Terraform
+infra/.terraform/
+
 # Database / local runtime files
 *.db
 *.sqlite
