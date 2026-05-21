@@ -48,11 +48,11 @@ jobs:
       - name: Set up Docker Compose
         run: |
           docker --version
-          docker-compose --version
+          docker compose version
 
       - name: Start services with Docker Compose
         run: |
-          docker-compose up -d
+          docker compose up -d
         env:
           DATABASE_URL: postgresql://user:password@localhost:5432/productdb
           ORDER_DATABASE_URL: postgresql://user:password@localhost:5433/orderdb
@@ -91,7 +91,7 @@ jobs:
       - name: Collect Docker logs on failure
         if: failure()
         run: |
-          docker-compose logs > docker-compose.log
+          docker compose logs > docker-compose.log
           ls -la services/*/
 
       - name: Upload Docker logs
@@ -104,4 +104,4 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
