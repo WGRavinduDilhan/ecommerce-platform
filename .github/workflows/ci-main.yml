@@ -54,8 +54,8 @@ jobs:
 
       - name: Validate docker-compose files
         run: |
-          docker-compose -f docker-compose.yml config > /dev/null
-          docker-compose -f docker-compose.enhanced.yml config > /dev/null
+          docker compose -f docker-compose.yml config > /dev/null
+          docker compose -f docker-compose.enhanced.yml config > /dev/null
 
       - name: Validate Terraform
         uses: terraform-linters/setup-tflint@v4
