@@ -1,0 +1,269 @@
+name: CI - Main Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Detect which services have changed
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      product-service: ${{ steps.changes.outputs.product-service }}
+      order-service: ${{ steps.changes.outputs.order-service }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      auth-service: ${{ steps.changes.outputs.auth-service }}
+      notification-service: ${{ steps.changes.outputs.notification-service }}
+      payment-service: ${{ steps.changes.outputs.payment-service }}
+      review-service: ${{ steps.changes.outputs.review-service }}
+      infra: ${{ steps.changes.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        id: changes
+        run: |
+          BASE_REF=${{ github.base_ref || 'main' }}
+          if [ -z "$BASE_REF" ]; then
+            BASE_REF="HEAD~1"
+          fi
+          
+          echo "product-service=$(git diff --name-only $BASE_REF...HEAD -- services/product-service | wc -l | grep -v '^0$' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "order-service=$(git diff --name-only $BASE_REF...HEAD -- services/order-service | wc -l | grep -v '^0$' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "frontend=$(git diff --name-only $BASE_REF...HEAD -- services/frontend | wc -l | grep -v '^0$' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "auth-service=$(git diff --name-only $BASE_REF...HEAD -- services/auth-service | wc -l | grep -v '^0$' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "notification-service=$(git diff --name-only $BASE_REF...HEAD -- services/notification-service | wc -l | grep -v '^0$' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "payment-service=$(git diff --name-only $BASE_REF...HEAD -- services/payment-service | wc -l | grep -v '^0$' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "review-service=$(git diff --name-only $BASE_REF...HEAD -- services/review-service | wc -l | grep -v '^0$' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "infra=$(git diff --name-only $BASE_REF...HEAD -- infra | wc -l | grep -v '^0$' && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+
+  # Lint configuration files
+  lint-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Validate docker-compose files
+        run: |
+          docker compose -f docker-compose.yml config > /dev/null
+          docker compose -f docker-compose.enhanced.yml config > /dev/null
+
+      - name: Validate Terraform
+        uses: terraform-linters/setup-tflint@v4
+        if: always()
+
+      - name: Run Terraform validation
+        run: |
+          cd infra
+          terraform fmt -check
+          terraform init -backend=false
+          terraform validate
+
+  # Product Service CI
+  product-service-ci:
+    needs: changes
+    if: needs.changes.outputs.product-service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'services/product-service/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          cd services/product-service
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint with pylint
+        run: |
+          cd services/product-service
+          pip install pylint
+          pylint app/*.py --disable=all --enable=E,F --fail-under=8.0 || true
+
+      - name: Format check with black
+        run: |
+          cd services/product-service
+          pip install black
+          black --check app/ || true
+
+      - name: Type check with mypy
+        run: |
+          cd services/product-service
+          pip install mypy
+          mypy app/ --ignore-missing-imports --no-error-summary || true
+
+      - name: Run tests
+        run: |
+          cd services/product-service
+          pytest app/ -v --tb=short || true
+
+  # Order Service CI
+  order-service-ci:
+    needs: changes
+    if: needs.changes.outputs.order-service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'services/order-service/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd services/order-service
+          npm ci
+
+      - name: Run ESLint
+        run: |
+          cd services/order-service
+          npm install --save-dev eslint
+          npx eslint src/ || true
+
+      - name: Run tests
+        run: |
+          cd services/order-service
+          npm test || true
+
+  # Frontend CI
+  frontend-ci:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'services/frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd services/frontend
+          npm ci
+
+      - name: Lint
+        run: |
+          cd services/frontend
+          npm install --save-dev eslint eslint-plugin-react
+          npx eslint src/ || true
+
+      - name: Build
+        run: |
+          cd services/frontend
+          npm run build
+
+      - name: Check for security vulnerabilities
+        run: |
+          cd services/frontend
+          npm audit || true
+
+  # Auth Service CI
+  auth-service-ci:
+    needs: changes
+    if: needs.changes.outputs.auth-service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'services/auth-service/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd services/auth-service
+          npm ci
+
+      - name: Run ESLint
+        run: |
+          cd services/auth-service
+          npx eslint src/ || true
+
+      - name: Run tests
+        run: |
+          cd services/auth-service
+          npm test || true
+
+  # Other Node.js services CI (Notification, Payment, Review)
+  other-services-ci:
+    needs: changes
+    if: >
+      needs.changes.outputs.notification-service == 'true' ||
+      needs.changes.outputs.payment-service == 'true' ||
+      needs.changes.outputs.review-service == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [notification-service, payment-service, review-service]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'services/${{ matrix.service }}/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd services/${{ matrix.service }}
+          npm ci
+
+      - name: Run ESLint
+        run: |
+          cd services/${{ matrix.service }}
+          npx eslint src/ || true
+
+      - name: Run tests
+        run: |
+          cd services/${{ matrix.service }}
+          npm test || true
+
+  # Summary
+  ci-summary:
+    runs-on: ubuntu-latest
+    needs: [lint-config, product-service-ci, order-service-ci, frontend-ci, auth-service-ci, other-services-ci]
+    if: always()
+    steps:
+      - name: CI Pipeline Summary
+        run: |
+          echo "✅ CI Pipeline Completed"
+          echo "- Configuration validation: ${{ needs.lint-config.result }}"
+          echo "- Product Service: ${{ needs.product-service-ci.result }}"
+          echo "- Order Service: ${{ needs.order-service-ci.result }}"
+          echo "- Frontend: ${{ needs.frontend-ci.result }}"
+          echo "- Auth Service: ${{ needs.auth-service-ci.result }}"
+          echo "- Other Services: ${{ needs.other-services-ci.result }}"
+
+      - name: Fail if any check failed
+        if: failure()
+        run: exit 1

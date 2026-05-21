@@ -4,18 +4,30 @@ services:
     environment: { POSTGRES_USER: user, POSTGRES_PASSWORD: password, POSTGRES_DB: productdb }
     ports: ["5432:5432"]
     volumes: [product-db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d productdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   order-db:
     image: postgres:15-alpine
     environment: { POSTGRES_USER: user, POSTGRES_PASSWORD: password, POSTGRES_DB: orderdb }
     ports: ["5433:5432"]
     volumes: [order-db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d orderdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   product-service:
     build: ./services/product-service
     ports: ["8000:8000"]
     environment: { DATABASE_URL: postgresql://user:password@product-db/productdb }
-    depends_on: [product-db]
+    depends_on:
+      product-db:
+        condition: service_healthy
 
   order-service:
     build: ./services/order-service
@@ -24,7 +36,11 @@ services:
       DATABASE_URL: postgresql://user:password@order-db/orderdb
       PRODUCT_SERVICE_URL: http://product-service:8000
       FRONTEND_ORIGIN: http://localhost:5173
-    depends_on: [order-db, product-service]
+    depends_on:
+      order-db:
+        condition: service_healthy
+      product-service:
+        condition: service_started
 
   frontend:
     build: ./services/frontend
@@ -32,6 +48,10 @@ services:
     environment:
       VITE_PRODUCT_API_URL: http://localhost:8000
       VITE_ORDER_API_URL: http://localhost:3000
-    depends_on: [product-service, order-service]
+    depends_on:
+      product-service:
+        condition: service_started
+      order-service:
+        condition: service_started
 
 volumes: { product-db-data: {}, order-db-data: {} }
