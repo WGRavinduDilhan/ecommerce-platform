@@ -17,6 +17,7 @@ terraform {
 # Configure the Google Provider
 
 provider "google" {
-  project = "gcp-project-id"
-  region  = "us-central1"
+  project = var.GCP_PROJECT_ID
+  region  = var.region
+  zone    = var.zone
 }

@@ -210,14 +210,10 @@ jobs:
       - name: Initialize Terraform
         run: |
           cd infra
-          if [ "${{ steps.creds.outputs.has_creds }}" = "true" ]; then
-            terraform init
-          else
-            terraform init -backend=false
-          fi
+          terraform init -backend=false -input=false
 
       - name: Generate cost estimate
         run: |
           cd infra
-          terraform plan -out=tfplan
+          terraform plan -refresh=false -input=false -out=tfplan
           echo "Cost estimation requires Infracost integration"
