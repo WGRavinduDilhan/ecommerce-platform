@@ -2,6 +2,7 @@ import os
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from . import models, schemas, database
 
@@ -19,13 +20,30 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     models.Base.metadata.create_all(bind=database.engine)
+    inspector = inspect(database.engine)
+    if "products" not in inspector.get_table_names():
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("products")}
+    required_columns = {
+        "seller_name": "VARCHAR(255)",
+        "seller_email": "VARCHAR(255)",
+    }
+
+    with database.engine.begin() as connection:
+        for column_name, ddl in required_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(text(f"ALTER TABLE products ADD COLUMN {column_name} {ddl}"))
 
 @app.get("/health")
 def health(): return {"status": "ok"}
 
 @app.get("/products", response_model=list[schemas.ProductRead])
-def list_products(db: Session = Depends(database.get_db)):
-    return db.query(models.Product).all()
+def list_products(seller_email: str | None = None, db: Session = Depends(database.get_db)):
+    query = db.query(models.Product)
+    if seller_email:
+        query = query.filter(models.Product.seller_email == seller_email)
+    return query.order_by(models.Product.id.desc()).all()
 
 @app.post("/products", response_model=schemas.ProductRead)
 def create_product(product: schemas.ProductCreate, db: Session = Depends(database.get_db)):

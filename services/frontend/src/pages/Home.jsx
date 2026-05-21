@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { getProducts } from '../api';
 import { ProductCard } from '../components/ProductCard';
 import * as toast from '../toast';
-import { Search } from 'lucide-react';
+import { Search, Store, Sparkles, TrendingUp } from 'lucide-react';
 
 export function Home() {
   const [products, setProducts] = useState([]);
@@ -38,6 +39,22 @@ export function Home() {
     (p.category && p.category.toLowerCase().includes(search.toLowerCase()))
   );
 
+  const activeSellers = products.reduce((map, product) => {
+    if (!product.seller_email) return map;
+    if (!map[product.seller_email]) {
+      map[product.seller_email] = {
+        name: product.seller_name || 'Independent Seller',
+        email: product.seller_email,
+        count: 0,
+      };
+    }
+    map[product.seller_email].count += 1;
+    return map;
+  }, {});
+
+  const featuredSellers = Object.values(activeSellers).slice(0, 3);
+  const inStockCount = products.filter(product => Number(product.stock) > 0).length;
+
   return (
     <div className="page-container fade-in">
       <section className="hero">
@@ -63,6 +80,48 @@ export function Home() {
           </div>
         </div>
       </section>
+
+      <section className="market-strip">
+        <div className="market-strip-card">
+          <TrendingUp size={20} />
+          <div>
+            <strong>{inStockCount}</strong>
+            <span>Items ready to ship</span>
+          </div>
+        </div>
+        <div className="market-strip-card">
+          <Store size={20} />
+          <div>
+            <strong>{featuredSellers.length || 1}</strong>
+            <span>Active sellers</span>
+          </div>
+        </div>
+        <Link className="market-strip-card market-strip-cta" to="/auth?mode=register&role=seller&redirect=/seller">
+          <Sparkles size={20} />
+          <div>
+            <strong>Sell with us</strong>
+            <span>Launch your own storefront</span>
+          </div>
+        </Link>
+      </section>
+
+      {featuredSellers.length > 0 && (
+        <section className="sellers-section">
+          <div className="section-header">
+            <h2>Featured Sellers</h2>
+            <p className="hint">Independent shops powering the marketplace</p>
+          </div>
+          <div className="seller-grid">
+            {featuredSellers.map((seller) => (
+              <article key={seller.email} className="seller-card">
+                <div className="seller-card-badge"><Store size={16} /> Seller</div>
+                <h3>{seller.name}</h3>
+                <p>{seller.count} live products</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="products-section">
         <div className="section-header">

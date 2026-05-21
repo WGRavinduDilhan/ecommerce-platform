@@ -1,10 +1,10 @@
 # 🧪 E-Commerce Platform - Automated System Integration Test Results
 
 **Date**: 2026-05-21  
-**Time**: 13:58:19  
-**Status**: ✅ ALL SYSTEMS RUNNING & HEALTHY  
-**Pass Rate**: 100.0% (16/16 Tests Passed)  
-**Average API Response Time**: 32.2 ms
+**Time**: 08:52:32  
+**Status**: ⚠️ SOME TESTS FAILING  
+**Pass Rate**: 0.0% (0/5 Tests Passed)  
+**Average API Response Time**: 4129.6 ms
 
 ---
 
@@ -21,22 +21,11 @@
 
 | ID | Test Case Name | Status | Duration | Key details / Observations |
 |----|----------------|--------|----------|----------------------------|
-| 01 | Frontend connection (Port 5173) | ✅ PASSED | 156 ms | Status: 200 |
-| 02 | Product Service Health Check (Port 8000) | ✅ PASSED | 21 ms | Response: {"status":"ok"} |
-| 03 | Order Service Health Check (Port 3000) | ✅ PASSED | 22 ms | Response: {"status":"ok","service":"order-service"} |
-| 04 | List Initial Products | ✅ PASSED | 27 ms | Found 6 products |
-| 05 | Create Product | ✅ PASSED | 32 ms | Created ID: 10 |
-| 06 | Get Product Details | ✅ PASSED | 18 ms | Fetched ID: 10 |
-| 07 | Update Product Details | ✅ PASSED | 25 ms | Updated Stock: 30 |
-| 08 | Create Order | ✅ PASSED | 72 ms | Order ID: 39, Status: confirmed |
-| 09 | Verify Stock Synchronization | ✅ PASSED | 19 ms | Expected Stock: 25, Actual: 25 |
-| 10 | List & Filter Orders | ✅ PASSED | 20 ms | Found 3 orders for user |
-| 11 | Handle Insufficient Stock | ✅ PASSED | 19 ms | Status: 400, Msg: Insufficient stock |
-| 12 | Handle Order for Non-existent Product | ✅ PASSED | 25 ms | Status: 404, Msg: Product not found |
-| 13 | Handle Negative Quantity Order | ✅ PASSED | 10 ms | Status: 400, Msg: Quantity must be a positive integer |
-| 14 | Handle Get Non-existent Product | ✅ PASSED | 16 ms | Status: 404 |
-| 15 | Delete Test Product | ✅ PASSED | 16 ms | Deleted ID: 10 |
-| 16 | Verify Product Deletion | ✅ PASSED | 17 ms | Status: 404 |
+| 01 | Frontend connection (Port 5173) | ❌ FAILED | 4308 ms | Error: HTTPConnectionPool(host='localhost', port=5173): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='localhost', port=5173): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it")) |
+| 02 | Product Service Health Check (Port 8000) | ❌ FAILED | 4084 ms | Error: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /health (Caused by NewConnectionError("HTTPConnection(host='localhost', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it")) |
+| 03 | Order Service Health Check (Port 3000) | ❌ FAILED | 4110 ms | Error: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: /health (Caused by NewConnectionError("HTTPConnection(host='localhost', port=3000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it")) |
+| 04 | List Initial Products | ❌ FAILED | 4080 ms | Error: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /products (Caused by NewConnectionError("HTTPConnection(host='localhost', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it")) |
+| 05 | Create Product | ❌ FAILED | 4066 ms | Error: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /products (Caused by NewConnectionError("HTTPConnection(host='localhost', port=8000): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it")) |
 
 ---
 
@@ -53,9 +42,9 @@
 ║  Product Database        [████████████████] 100%  ✅ UP       ║
 ║  Order Database          [████████████████] 100%  ✅ UP       ║
 ║                                                                ║
-║  Overall System Health   [████████████████] 100.0%  ✅ HEALTHY  
+║  Overall System Health   [██████████░░░░░░] 0.0%  ⚠️ WARNING  
 ║                                                                ║
-║  Tests Executed: 16      Passed: 16      Failed: 0               ║
+║  Tests Executed: 5      Passed: 0      Failed: 5               ║
 ║  Network Integration: OPERATIONAL & STABLE                     ║
 ║                                                                ║
 ╚════════════════════════════════════════════════════════════════╝
@@ -69,4 +58,4 @@
 
 ---
 **Test Executed By**: Antigravity Automated AI Testing Suite  
-**Verdict**: 🟢 READY FOR STAGING/PRODUCTION
+**Verdict**: 🔴 ACTION REQUIRED - FIX FAILING SERVICES

@@ -12,3 +12,5 @@ class Product(Base):
     price = Column(Float, nullable=False)
     stock = Column(Integer, default=0)
     image = Column(String, nullable=True)
+    seller_name = Column(String, nullable=True)
+    seller_email = Column(String, nullable=True, index=True)

@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import * as toast from '../toast';
-import { ShoppingCart, User, LogOut, Package, Shield } from 'lucide-react';
+import { ShoppingCart, User, LogOut, Package, Shield, Store } from 'lucide-react';
 
 export function NavBar() {
   const { user, logout } = useAuth();
@@ -38,6 +38,12 @@ export function NavBar() {
             Orders
           </Link>
         )}
+        {user?.role === 'seller' && (
+          <Link to="/seller" className={`nav-link ${location.pathname === '/seller' ? 'active' : ''}`}>
+            <Store size={18} />
+            Seller Studio
+          </Link>
+        )}
         {user?.role === 'admin' && (
           <Link to="/admin" className={`nav-link ${location.pathname === '/admin' ? 'active' : ''}`}>
             <Shield size={18} />
@@ -52,6 +58,7 @@ export function NavBar() {
             <span className="welcome">
               <User size={16} /> Hi, {user.name.split(' ')[0]}
             </span>
+            {user.role && <span className="role-pill">{user.role}</span>}
             <button className="icon-button" onClick={handleLogout} title="Logout">
               <LogOut size={18} />
             </button>

@@ -93,6 +93,7 @@ export function Orders() {
                   <img src={product?.image || 'https://picsum.photos/100'} alt="Product" className="order-img" />
                   <div className="order-details">
                     <h4>{product ? product.name : `Product ID: ${order.product_id}`}</h4>
+                    {product?.seller_name && <p className="hint">Sold by {product.seller_name}</p>}
                     <p className="hint">Qty: {order.quantity}</p>
                     <p className="hint">Payment: <span style={{textTransform:'capitalize'}}>{order.payment_method || 'N/A'}</span></p>
                   </div>

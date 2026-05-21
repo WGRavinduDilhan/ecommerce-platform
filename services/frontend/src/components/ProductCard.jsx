@@ -1,7 +1,7 @@
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import * as toast from '../toast';
-import { ShoppingBag } from 'lucide-react';
+import { ShoppingBag, Store } from 'lucide-react';
 
 function currency(value) {
   return new Intl.NumberFormat('en-US', {
@@ -43,6 +43,12 @@ export function ProductCard({ product }) {
           <span className="sku">#{product.id}</span>
         </div>
         <h3 className="product-title" title={product.name}>{product.name}</h3>
+        <div className="product-meta-row">
+          <span className="seller-chip">
+            <Store size={14} />
+            {product.seller_name || 'Eastlane Marketplace'}
+          </span>
+        </div>
         <div className="price-row">
           <strong className="product-price">{currency(product.price)}</strong>
           <span className="product-stock">{product.stock} left</span>
