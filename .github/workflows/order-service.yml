@@ -30,12 +30,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: 'services/order-service/package-lock.json'
+          cache-dependency-path: 'services/order-service/package.json'
 
       - name: Install dependencies
         run: |
           cd services/order-service
-          npm ci
+          npm install --omit=dev --no-audit --no-fund
 
       - name: Lint with ESLint
         run: |
