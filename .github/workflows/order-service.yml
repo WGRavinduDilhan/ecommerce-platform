@@ -12,6 +12,9 @@ on:
       - 'services/order-service/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   SERVICE_NAME: order-service
   NODE_VERSION: '20'
@@ -24,6 +27,9 @@ jobs:
     name: Test Order Service
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -66,6 +72,9 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -109,6 +118,9 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
 
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
@@ -136,6 +148,9 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
@@ -172,6 +187,9 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
