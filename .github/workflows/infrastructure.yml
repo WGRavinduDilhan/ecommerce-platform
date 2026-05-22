@@ -126,39 +126,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check Google Cloud credentials
+        id: creds
+        run: |
+          if [ -n "${GCP_SA_KEY}" ] && [ -n "${GCP_PROJECT_ID}" ]; then
+            echo "has_creds=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_creds=false" >> "$GITHUB_OUTPUT"
+            echo "Missing GCP_SA_KEY or GCP_PROJECT_ID repository secrets. terraform-apply requires Google Cloud credentials." >&2
+            exit 1
+          fi
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Authenticate to Google Cloud
+        if: steps.creds.outputs.has_creds == 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ env.GCP_SA_KEY }}
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Set up Cloud SDK
+        if: steps.creds.outputs.has_creds == 'true'
         uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Initialize Terraform
+        if: steps.creds.outputs.has_creds == 'true'
         run: |
           cd infra
           terraform init
 
       - name: Download plan
+        if: steps.creds.outputs.has_creds == 'true'
         uses: actions/download-artifact@v4
         with:
           name: terraform-plan
           path: infra/
 
       - name: Apply Terraform
+        if: steps.creds.outputs.has_creds == 'true'
         run: |
           cd infra
           terraform apply -auto-approve tfplan
 
       - name: Get outputs
+        if: steps.creds.outputs.has_creds == 'true'
         id: outputs
         run: |
           cd infra
@@ -178,7 +195,7 @@ jobs:
         with:
           status: ${{ job.status }}
           text: 'Infrastructure deployment - Cluster: ${{ steps.outputs.outputs.cluster_name }}'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
         continue-on-error: true
 
   cost-estimation:
