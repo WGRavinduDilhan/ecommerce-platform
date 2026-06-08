@@ -19,8 +19,8 @@ on:
           - production-canary
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: us-central1-docker.pkg.dev
+  IMAGE_NAME: ${{ secrets.GCP_PROJECT_ID }}/ecommerce-images
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GCP_REGION: us-central1
   GKE_CLUSTER: ecommerce-prod
@@ -79,15 +79,9 @@ jobs:
         run: |
           kubectl create namespace ecommerce --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Create image pull secret
+      - name: Verify cluster access
         run: |
-          kubectl create secret docker-registry ghcr-secret \
-            --docker-server=${{ env.REGISTRY }} \
-            --docker-username=${{ github.actor }} \
-            --docker-password=${{ secrets.GITHUB_TOKEN }} \
-            --docker-email=${{ github.actor }}@github.com \
-            -n ecommerce \
-            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl get nodes -o wide
 
       - name: Deploy with blue-green strategy (Product Service)
         run: |
