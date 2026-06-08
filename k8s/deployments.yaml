@@ -2,12 +2,16 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: ecommerce
+
 ---
+
 apiVersion: v1
 kind: Namespace
 metadata:
   name: ecommerce-staging
+
 ---
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -104,7 +108,9 @@ spec:
                   values:
                   - product-service
               topologyKey: kubernetes.io/hostname
+
 ---
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -147,7 +153,10 @@ spec:
       target:
         type: Utilization
         averageUtilization: 80
+
 ---
+
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -214,7 +223,9 @@ spec:
           runAsNonRoot: true
           runAsUser: 1000
           allowPrivilegeEscalation: false
+
 ---
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -231,7 +242,9 @@ spec:
     protocol: TCP
   selector:
     app: order-service
+
 ---
+
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -251,7 +264,11 @@ spec:
       target:
         type: Utilization
         averageUtilization: 75
+
+      
 ---
+
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -303,7 +320,11 @@ spec:
             port: http
           initialDelaySeconds: 5
           periodSeconds: 5
+
+
 ---
+
+
 apiVersion: v1
 kind: Service
 metadata:
@@ -320,19 +341,25 @@ spec:
     protocol: TCP
   selector:
     app: frontend
+
 ---
+
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: product-service
   namespace: ecommerce
+
 ---
+
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: order-service
   namespace: ecommerce
+
 ---
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -341,8 +368,10 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["configmaps", "secrets"]
-  verbs: ["get", "list"]
+  verbs: ["get", "list"]      
+
 ---
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -356,7 +385,9 @@ subjects:
 - kind: ServiceAccount
   name: product-service
   namespace: ecommerce
+
 ---
+
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -367,7 +398,9 @@ spec:
   selector:
     matchLabels:
       app: product-service
+
 ---
+
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

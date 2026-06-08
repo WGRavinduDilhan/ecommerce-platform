@@ -15,8 +15,8 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: us-central1-docker.pkg.dev
+  IMAGE_NAME: ${{ secrets.GCP_PROJECT_ID }}/ecommerce-images
 
 jobs:
   setup:
@@ -45,13 +45,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Container Registry
+      - name: Log in to Google Artifact Registry
         uses: docker/login-action@v3
         if: github.event_name != 'pull_request'
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: _json_key
+          password: ${{ secrets.GCP_SA_KEY }}
 
       - name: Extract metadata
         id: meta
@@ -132,6 +132,15 @@ jobs:
       matrix:
         service: [product-service, order-service, frontend, auth-service, notification-service, payment-service, review-service]
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Google Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: _json_key
+          password: ${{ secrets.GCP_SA_KEY }}
+
       - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@master
         with:
