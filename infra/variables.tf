@@ -1,6 +1,3 @@
-variable "GCP_PROJECT_ID" {
-  type = string
-}
 
 variable "region" {
   type    = string

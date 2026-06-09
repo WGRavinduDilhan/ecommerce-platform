@@ -17,7 +17,11 @@ terraform {
 # Configure the Google Provider
 
 provider "google" {
-  project = var.GCP_PROJECT_ID
+  project = var.project_id
   region  = var.region
   zone    = var.zone
+}
+
+locals {
+  github_repo = var.github_repo
 }
