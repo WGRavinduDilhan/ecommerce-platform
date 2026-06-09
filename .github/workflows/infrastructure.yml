@@ -89,7 +89,6 @@ jobs:
         run: |
           cd infra
           terraform plan -out=tfplan -json > plan.json
-        continue-on-error: true
 
       - name: Comment PR with plan
         if: github.event_name == 'pull_request' && steps.creds.outputs.has_creds == 'true'
@@ -116,7 +115,7 @@ jobs:
 
   terraform-apply:
     needs: terraform-plan
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment:
       name: production
