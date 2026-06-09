@@ -9,7 +9,7 @@ terraform {
   }
 
   backend "gcs" {
-    bucket = "<GCP_PROJECT_ID>-tfstate"
+    bucket = "ecommerce-devops-498814-tfstate"
     prefix = "terraform/state"
   }
 }

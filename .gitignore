@@ -32,6 +32,8 @@ pnpm-debug.log*
 
 # Terraform
 infra/.terraform/
+*.tfvars
+*.tfvars.json
 
 # Database / local runtime files
 *.db

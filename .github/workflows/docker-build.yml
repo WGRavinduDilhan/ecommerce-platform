@@ -16,7 +16,7 @@ on:
 
 env:
   REGISTRY: us-central1-docker.pkg.dev
-  IMAGE_NAME: ${{ secrets.GCP_PROJECT_ID }}/ecommerce-images
+  IMAGE_PREFIX: ${{ secrets.GCP_PROJECT_ID }}/ecommerce-images
 
 jobs:
   setup:
@@ -38,6 +38,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     
     steps:
       - uses: actions/checkout@v4
@@ -45,25 +46,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Google Artifact Registry
-        uses: docker/login-action@v3
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
         if: github.event_name != 'pull_request'
         with:
-          registry: ${{ env.REGISTRY }}
-          username: _json_key
-          password: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        if: github.event_name != 'pull_request'
+
+      - name: Log in to Google Artifact Registry
+        if: github.event_name != 'pull_request'
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }}
 
       - name: Check if Dockerfile exists
         id: dockerfile-check
@@ -128,23 +138,33 @@ jobs:
     needs: docker-build
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
     strategy:
       matrix:
         service: [product-service, order-service, frontend, auth-service, notification-service, payment-service, review-service]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to Google Artifact Registry
-        uses: docker/login-action@v3
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
         with:
-          registry: ${{ env.REGISTRY }}
-          username: _json_key
-          password: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+
+      - name: Log in to Google Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
       - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.service }}:${{ github.ref_name }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ github.ref_name }}
           format: 'sarif'
           output: 'trivy-results-${{ matrix.service }}.sarif'
         continue-on-error: true

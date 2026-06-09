@@ -1,26 +1,27 @@
 name: Infrastructure as Code
 
 on:
+  workflow_dispatch:  # manual trigger only
   push:
-    branches: [main, develop]
+    branches: [main]
     paths:
-      - 'infra/**'
-      - '.github/workflows/infrastructure.yml'
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - 'infra/**'
-  workflow_dispatch:
+      - 'infra/**'    # only triggers when Terraform files change
 
 env:
   TF_VERSION: 1.7.5
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
 jobs:
   terraform-plan:
     runs-on: ubuntu-latest
     env:
-      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+      WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +29,7 @@ jobs:
       - name: Check Google Cloud credentials
         id: creds
         run: |
-          if [ -n "${GCP_SA_KEY}" ] && [ -n "${GCP_PROJECT_ID}" ]; then
+          if [ -n "${WIF_PROVIDER}" ] && [ -n "${WIF_SERVICE_ACCOUNT}" ] && [ -n "${GCP_PROJECT_ID}" ]; then
             echo "has_creds=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_creds=false" >> "$GITHUB_OUTPUT"
@@ -43,8 +44,8 @@ jobs:
         if: steps.creds.outputs.has_creds == 'true'
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ env.GCP_SA_KEY }}
-          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         if: steps.creds.outputs.has_creds == 'true'
@@ -120,7 +121,8 @@ jobs:
     environment:
       name: production
     env:
-      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+      WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     
     steps:
@@ -129,11 +131,11 @@ jobs:
       - name: Check Google Cloud credentials
         id: creds
         run: |
-          if [ -n "${GCP_SA_KEY}" ] && [ -n "${GCP_PROJECT_ID}" ]; then
+          if [ -n "${WIF_PROVIDER}" ] && [ -n "${WIF_SERVICE_ACCOUNT}" ] && [ -n "${GCP_PROJECT_ID}" ]; then
             echo "has_creds=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_creds=false" >> "$GITHUB_OUTPUT"
-            echo "Missing GCP_SA_KEY or GCP_PROJECT_ID repository secrets. terraform-apply requires Google Cloud credentials." >&2
+            echo "Missing WIF_PROVIDER, WIF_SERVICE_ACCOUNT or GCP_PROJECT_ID repository secrets. terraform-apply requires Google Cloud credentials." >&2
             exit 1
           fi
 
@@ -146,8 +148,8 @@ jobs:
         if: steps.creds.outputs.has_creds == 'true'
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ env.GCP_SA_KEY }}
-          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         if: steps.creds.outputs.has_creds == 'true'
@@ -202,7 +204,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     env:
-      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+      WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
@@ -210,7 +213,7 @@ jobs:
       - name: Check Google Cloud credentials
         id: creds
         run: |
-          if [ -n "${GCP_SA_KEY}" ] && [ -n "${GCP_PROJECT_ID}" ]; then
+          if [ -n "${WIF_PROVIDER}" ] && [ -n "${WIF_SERVICE_ACCOUNT}" ] && [ -n "${GCP_PROJECT_ID}" ]; then
             echo "has_creds=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_creds=false" >> "$GITHUB_OUTPUT"
@@ -225,8 +228,8 @@ jobs:
         if: steps.creds.outputs.has_creds == 'true'
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ env.GCP_SA_KEY }}
-          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         if: steps.creds.outputs.has_creds == 'true'
