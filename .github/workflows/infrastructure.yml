@@ -87,10 +87,13 @@ jobs:
         id: plan
         if: steps.creds.outputs.has_creds == 'true'
         run: |
+          set -o pipefail
           cd infra
           terraform plan \
             -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
-            -out=tfplan -json > plan.json
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -out=tfplan 2>&1 | tee plan.log
+          terraform show -json tfplan > plan.json
 
       - name: Comment PR with plan
         if: github.event_name == 'pull_request' && steps.creds.outputs.has_creds == 'true'
@@ -117,6 +120,7 @@ jobs:
           path: |
             infra/tfplan
             infra/plan.json
+            infra/plan.log
           retention-days: 1
 
   terraform-apply:
