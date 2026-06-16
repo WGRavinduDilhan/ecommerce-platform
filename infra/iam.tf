@@ -1,12 +1,8 @@
-variable "service_account_email" {
-  type        = string
-  description = "Email of the GitHub Actions service account (e.g. gh-actions@PROJECT.iam.gserviceaccount.com)"
-}
-
 # Grant the GitHub Actions service account all roles needed to
 # manage infrastructure via Terraform.
 # The WIF pool/provider that enables this authentication is
 # managed separately in infra/bootstrap/ (one-time manual apply).
+
 
 locals {
   sa_member = "serviceAccount:${var.service_account_email}"
