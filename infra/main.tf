@@ -22,6 +22,3 @@ provider "google" {
   zone    = var.zone
 }
 
-locals {
-  github_repo = var.github_repo
-}
