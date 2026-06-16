@@ -36,7 +36,7 @@ jobs:
           fi
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -88,7 +88,9 @@ jobs:
         if: steps.creds.outputs.has_creds == 'true'
         run: |
           cd infra
-          terraform plan -out=tfplan -json > plan.json
+          terraform plan \
+            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+            -out=tfplan -json > plan.json
 
       - name: Comment PR with plan
         if: github.event_name == 'pull_request' && steps.creds.outputs.has_creds == 'true'
@@ -106,12 +108,16 @@ jobs:
               body: comment,
             });
 
+      # CRITICAL: only upload when plan actually ran and produced tfplan
       - name: Upload plan
+        if: steps.creds.outputs.has_creds == 'true' && steps.plan.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan
-          path: infra/tfplan
-          retention-days: 5
+          path: |
+            infra/tfplan
+            infra/plan.json
+          retention-days: 1
 
   terraform-apply:
     needs: terraform-plan
@@ -139,7 +145,7 @@ jobs:
           fi
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -162,6 +168,7 @@ jobs:
           cd infra
           terraform init
 
+      # Downloads the tfplan produced and uploaded by terraform-plan job
       - name: Download plan
         if: steps.creds.outputs.has_creds == 'true'
         uses: actions/download-artifact@v4
@@ -219,7 +226,7 @@ jobs:
           fi
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 

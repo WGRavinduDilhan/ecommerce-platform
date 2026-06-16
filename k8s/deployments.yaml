@@ -30,6 +30,7 @@ spec:
   selector:
     matchLabels:
       app: product-service
+      version: v1
   template:
     metadata:
       labels:
@@ -127,7 +128,9 @@ spec:
     protocol: TCP
   selector:
     app: product-service
+
 ---
+
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -156,7 +159,6 @@ spec:
 
 ---
 
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -175,6 +177,7 @@ spec:
   selector:
     matchLabels:
       app: order-service
+      version: v1
   template:
     metadata:
       labels:
@@ -211,6 +214,7 @@ spec:
             port: http
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
           httpGet:
@@ -218,11 +222,40 @@ spec:
             port: http
           initialDelaySeconds: 10
           periodSeconds: 5
+          timeoutSeconds: 3
           failureThreshold: 2
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          failureThreshold: 30
+          periodSeconds: 10
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - order-service
+              topologyKey: kubernetes.io/hostname
 
 ---
 
@@ -264,10 +297,14 @@ spec:
       target:
         type: Utilization
         averageUtilization: 75
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
 
-      
 ---
-
 
 apiVersion: apps/v1
 kind: Deployment
@@ -287,12 +324,14 @@ spec:
   selector:
     matchLabels:
       app: frontend
+      version: v1
   template:
     metadata:
       labels:
         app: frontend
         version: v1
     spec:
+      serviceAccountName: frontend
       containers:
       - name: frontend
         image: ghcr.io/ecommerce/frontend:latest
@@ -314,16 +353,50 @@ spec:
             port: http
           initialDelaySeconds: 30
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /
             port: http
           initialDelaySeconds: 5
           periodSeconds: 5
-
+          timeoutSeconds: 3
+          failureThreshold: 2
+        startupProbe:
+          httpGet:
+            path: /
+            port: http
+          failureThreshold: 30
+          periodSeconds: 10
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - frontend
+              topologyKey: kubernetes.io/hostname
 
 ---
-
 
 apiVersion: v1
 kind: Service
@@ -333,7 +406,7 @@ metadata:
   labels:
     app: frontend
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
   - name: http
     port: 80
@@ -360,6 +433,14 @@ metadata:
 
 ---
 
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend
+  namespace: ecommerce
+
+---
+
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -368,7 +449,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["configmaps", "secrets"]
-  verbs: ["get", "list"]      
+  verbs: ["get", "list"]
 
 ---
 
@@ -411,3 +492,16 @@ spec:
   selector:
     matchLabels:
       app: order-service
+
+---
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: ecommerce
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: frontend
