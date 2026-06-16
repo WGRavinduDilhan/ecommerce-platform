@@ -1,17 +1,43 @@
-resource "google_iam_workload_identity_pool" "pool" {
-  workload_identity_pool_id = "github-pool"
-  display_name              = "GitHub Pool"
+variable "service_account_email" {
+  type        = string
+  description = "Email of the GitHub Actions service account (e.g. gh-actions@PROJECT.iam.gserviceaccount.com)"
 }
 
-resource "google_iam_workload_identity_pool_provider" "provider" {
-  workload_identity_pool_id          = google_iam_workload_identity_pool.pool.workload_identity_pool_id
-  workload_identity_pool_provider_id = "github-provider"
-  attribute_condition                = "attribute.repository == '${local.github_repo}'"
-  attribute_mapping = {
-    "google.subject"       = "assertion.sub"
-    "attribute.repository" = "assertion.repository"
-  }
-  oidc {
-    issuer_uri = "https://token.actions.githubusercontent.com"
-  }
+# Grant the GitHub Actions service account all roles needed to
+# manage infrastructure via Terraform.
+# The WIF pool/provider that enables this authentication is
+# managed separately in infra/bootstrap/ (one-time manual apply).
+
+locals {
+  sa_member = "serviceAccount:${var.service_account_email}"
+}
+
+resource "google_project_iam_member" "compute_admin" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = local.sa_member
+}
+
+resource "google_project_iam_member" "container_admin" {
+  project = var.project_id
+  role    = "roles/container.admin"
+  member  = local.sa_member
+}
+
+resource "google_project_iam_member" "cloudsql_admin" {
+  project = var.project_id
+  role    = "roles/cloudsql.admin"
+  member  = local.sa_member
+}
+
+resource "google_project_iam_member" "storage_admin" {
+  project = var.project_id
+  role    = "roles/storage.admin"
+  member  = local.sa_member
+}
+
+resource "google_project_iam_member" "service_account_user" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = local.sa_member
 }
