@@ -92,7 +92,6 @@ jobs:
           terraform plan \
             -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
-            -var="service_account_email=${{ secrets.WIF_SERVICE_ACCOUNT }}" \
             -out=tfplan 2>&1 | tee plan.log
           terraform show -json tfplan > plan.json
 
