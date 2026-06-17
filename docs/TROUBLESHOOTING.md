@@ -16,6 +16,8 @@ This document records all known issues encountered in this project and their con
 8. [Kubernetes — Frontend Service LoadBalancer Exposure](#8-kubernetes--frontend-service-loadbalancer-exposure)
 9. [Kubernetes — Missing Security Hardening](#9-kubernetes--missing-security-hardening)
 10. [Kubernetes — Missing Resources (ServiceAccount, PDB, HPA)](#10-kubernetes--missing-resources-serviceaccount-pdb-hpa)
+11. [Terraform Init — Duplicate Variable Declaration](#11-terraform-init--duplicate-variable-declaration)
+12. [tflint — Unused Local and Variable After Bootstrap Move](#12-tflint--unused-local-and-variable-after-bootstrap-move)
 
 ---
 
@@ -139,7 +141,6 @@ set -o pipefail
 terraform plan \
   -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
   -var="db_password=${{ secrets.DB_PASSWORD }}" \
-  -var="github_repo=${{ github.repository }}" \
   -var="service_account_email=${{ secrets.WIF_SERVICE_ACCOUNT }}" \
   -out=tfplan 2>&1 | tee plan.log
 terraform show -json tfplan > plan.json
@@ -405,6 +406,125 @@ securityContext:
 
 ---
 
+## 11. Terraform Init — Duplicate Variable Declaration
+
+**File affected:** `infra/iam.tf`, `infra/variables.tf`
+
+### Error
+```
+Error: Terraform encountered problems during initialisation, including problems
+with the configuration, described below.
+
+Error: Duplicate variable declaration
+
+  on variables.tf line 22:
+  22: variable "service_account_email" {
+
+A variable named "service_account_email" was already declared at
+iam.tf:1,1-33. Variable names must be unique within a module.
+```
+
+### Root Cause
+When `iam.tf` was rewritten to contain IAM role bindings, the `variable "service_account_email"` block was added at the top of `iam.tf`. At the same time, the same variable was added to `variables.tf`. Terraform treats all `.tf` files in a directory as a **single module** — variable names must be unique across the entire module regardless of which file declares them.
+
+```hcl
+# BEFORE — declared in TWO files (causes init failure)
+
+# iam.tf line 1
+variable "service_account_email" {    # ← duplicate
+  type        = string
+  description = "Email of the GitHub Actions service account"
+}
+
+# variables.tf line 22
+variable "service_account_email" {    # ← duplicate
+  type        = string
+  description = "Email of the GitHub Actions service account"
+}
+```
+
+### Fix
+Removed the `variable` block from `iam.tf`. The canonical location for all variable declarations is `variables.tf`. Resources in `iam.tf` continue to reference `var.service_account_email` normally.
+
+```hcl
+# AFTER — declared ONCE in variables.tf only
+variable "service_account_email" {
+  type        = string
+  description = "Email of the GitHub Actions service account"
+}
+```
+
+> **Rule:** Always declare variables in `variables.tf`. Never declare them inside resource files (`iam.tf`, `gke.tf`, etc.) — even if it feels convenient to co-locate them with the resource that uses them.
+
+---
+
+## 12. tflint — Unused Local and Variable After Bootstrap Move
+
+**File affected:** `infra/main.tf`, `infra/variables.tf`, `.github/workflows/infrastructure.yml`
+
+### Error
+```
+1 issue(s) found:
+
+Warning: [Fixable] local.github_repo is declared but not used
+(terraform_unused_declarations)
+
+  on main.tf line 26:
+  26:   github_repo = var.github_repo
+
+Error: Process completed with exit code 2.
+```
+
+### Root Cause
+When the WIF pool and provider were moved from `infra/iam.tf` to `infra/bootstrap/main.tf`, the consumer of `local.github_repo` (the `attribute_condition` in the WIF provider resource) moved with it. The `locals` block in `infra/main.tf` remained behind, now referencing a variable that is itself no longer used by anything in the main module.
+
+tflint exits with **code 2** (treated as an error by GitHub Actions) when it finds unused declarations.
+
+```hcl
+# main.tf — orphaned local after bootstrap move
+locals {
+  github_repo = var.github_repo   # ← nothing reads local.github_repo anymore
+}
+
+# variables.tf — orphaned variable, no resource references it
+variable "github_repo" {
+  type        = string
+  description = "GitHub Repository (owner/repo)"
+}
+```
+
+### Fix
+Removed all three references to `github_repo` from the main module in the same commit:
+
+**`infra/main.tf`** — removed `locals` block:
+```hcl
+# REMOVED
+locals {
+  github_repo = var.github_repo
+}
+```
+
+**`infra/variables.tf`** — removed `github_repo` variable:
+```hcl
+# REMOVED
+variable "github_repo" {
+  type        = string
+  description = "GitHub Repository (owner/repo)"
+}
+```
+
+**`.github/workflows/infrastructure.yml`** — removed the `-var` flag from the plan command:
+```bash
+# REMOVED from terraform plan
+-var="github_repo=${{ github.repository }}"
+```
+
+`github_repo` still exists in `infra/bootstrap/main.tf` where it is actually used — that is the correct and only place it belongs.
+
+> **Rule:** When moving resources between Terraform modules, always audit for orphaned `locals`, `variables`, `outputs`, and CI `-var` flags in the same PR. Leaving any one of them behind causes lint or init failures in subsequent runs.
+
+---
+
 ## Required GitHub Actions Secrets
 
 | Secret Name | Description |
@@ -423,7 +543,10 @@ securityContext:
 Step 1 — Bootstrap (manual, run once)
   cd infra/bootstrap
   terraform init
-  terraform apply -var="project_id=..." -var="github_repo=..." -var="service_account_email=..."
+  terraform apply \
+    -var="project_id=YOUR_PROJECT_ID" \
+    -var="github_repo=OWNER/REPO" \
+    -var="service_account_email=YOUR_SA@PROJECT.iam.gserviceaccount.com"
 
 Step 2 — Grant projectIamAdmin (manual, run once)
   gcloud projects add-iam-policy-binding PROJECT_ID \
@@ -439,4 +562,61 @@ Step 4 — Push to main or trigger workflow manually
 
 ---
 
-*Last updated: 2026-06-16*
+fixed (infra folder ): resolve IAM 403 by moving role bindings to bootstrap
+The CI service account cannot grant itself IAM permissions — this is a
+chicken-and-egg problem. When iam.tf tried to create google_project_iam_member
+resources, the SA had no rights to read or modify the project IAM policy,
+causing every binding to fail with:
+  Error: Error retrieving IAM policy for project "***":
+  googleapi: Error 403: The caller does not have permission, forbidden
+All five bindings failed simultaneously:
+  - roles/compute.networkAdmin    → compute_admin
+  - roles/container.admin         → container_admin
+  - roles/cloudsql.admin          → cloudsql_admin
+  - roles/storage.admin           → storage_admin
+  - roles/iam.serviceAccountUser  → service_account_user
+This also caused vpc.tf to fail (compute.networks.create) because
+compute.networkAdmin was never successfully granted.
+
+ infra/bootstrap/main.tf  [UPDATED]
+- feat: merged all google_project_iam_member resources from iam.tf into
+  bootstrap, applied once manually by a project admin (not by the CI SA)
+- feat: added roles/resourcemanager.projectIamAdmin binding so the SA can
+  manage project IAM policy reads on subsequent Terraform runs
+- Roles now granted via bootstrap:
+    roles/compute.networkAdmin
+    roles/container.admin
+    roles/cloudsql.admin
+    roles/storage.admin
+    roles/iam.serviceAccountUser
+    roles/resourcemanager.projectIamAdmin
+
+ infra/iam.tf  [CLEARED]
+- fix: removed all google_project_iam_member resource blocks
+- Replaced file content with an explanatory comment pointing to
+  infra/bootstrap/main.tf as the canonical location for IAM grants
+- Main infra/ module no longer attempts to manage project IAM policy
+
+
+ infra/variables.tf
+- fix: removed variable "service_account_email" — no longer referenced
+  by any resource in the main infra/ module after iam.tf was cleared
+
+ .github/workflows/infrastructure.yml
+- fix: removed -var="service_account_email=${{ secrets.WIF_SERVICE_ACCOUNT }}"
+  from terraform plan command — variable no longer declared in main module;
+  passing an undeclared variable causes terraform plan to exit 1
+Final terraform plan command now passes exactly two -var flags:
+  -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
+  -var="db_password=${{ secrets.DB_PASSWORD }}"
+  (region and zone use defaults from variables.tf)
+Manual prerequisite — run once before re-triggering workflow:
+  PROJECT_ID="ecommerce-devops-498814"
+  SA_EMAIL="YOUR_SA@ecommerce-devops-498814.iam.gserviceaccount.com"
+  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/compute.networkAdmin"
+  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/container.admin"
+  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/cloudsql.admin"
+  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/storage.admin"
+  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/iam.serviceAccountUser"
+
+*Last updated: 2026-06-16 — 12 issues documented*
