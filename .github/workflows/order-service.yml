@@ -202,6 +202,10 @@ jobs:
             --zone us-central1 \
             --project ${{ secrets.GCP_PROJECT_ID }}
 
+      - name: Ensure namespace exists
+        run: |
+          kubectl create namespace ecommerce-staging --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Update deployment
         run: |
           kubectl set image deployment/order-service \
@@ -251,6 +255,10 @@ jobs:
           gcloud container clusters get-credentials ecommerce-cluster \
             --zone us-central1 \
             --project ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Ensure namespace exists
+        run: |
+          kubectl create namespace ecommerce --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Update deployment
         run: |
