@@ -14,8 +14,8 @@ env:
   IMAGE_NAME: ${{ secrets.GCP_PROJECT_ID }}/ecommerce-images
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GCP_REGION: us-central1
-  GKE_CLUSTER: ecommerce-staging
-  GKE_ZONE: us-central1-a
+  GKE_CLUSTER: ecommerce-cluster
+  GKE_ZONE: us-central1
 
 jobs:
   deploy-staging:

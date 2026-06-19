@@ -238,8 +238,8 @@ jobs:
 
       - name: Get GKE credentials
         run: |
-          gcloud container clusters get-credentials ecommerce-prod \
-            --zone us-central1-a \
+          gcloud container clusters get-credentials ecommerce-cluster \
+            --zone us-central1 \
             --project ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Update deployment
