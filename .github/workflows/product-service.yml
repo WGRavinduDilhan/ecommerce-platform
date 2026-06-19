@@ -210,10 +210,15 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
 
+      - name: Install GKE auth plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
       - name: Get GKE credentials
+        env:
+          USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
         run: |
-          gcloud container clusters get-credentials ecommerce-staging \
-            --zone us-central1-a \
+          gcloud container clusters get-credentials ecommerce-cluster \
+            --zone us-central1 \
             --project ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Update deployment
@@ -259,7 +264,12 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
 
+      - name: Install GKE auth plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
       - name: Get GKE credentials
+        env:
+          USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
         run: |
           gcloud container clusters get-credentials ecommerce-cluster \
             --zone us-central1 \
