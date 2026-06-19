@@ -40,7 +40,7 @@ resource "google_sql_database_instance" "postgres" {
     }
   }
 
-  depends_on = [google_compute_network.vpc]
+  depends_on = [google_service_networking_connection.private_vpc]
 }
 
 resource "google_sql_database" "product_db" {

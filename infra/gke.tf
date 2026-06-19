@@ -3,6 +3,8 @@ resource "google_container_cluster" "primary" {
   location = var.region
   project  = var.project_id
 
+  depends_on = [google_service_networking_connection.private_vpc]
+
   # Remove the default node pool immediately after creation
   remove_default_node_pool = true
   initial_node_count       = 1

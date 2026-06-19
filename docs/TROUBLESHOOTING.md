@@ -18,6 +18,8 @@ This document records all known issues encountered in this project and their con
 10. [Kubernetes — Missing Resources (ServiceAccount, PDB, HPA)](#10-kubernetes--missing-resources-serviceaccount-pdb-hpa)
 11. [Terraform Init — Duplicate Variable Declaration](#11-terraform-init--duplicate-variable-declaration)
 12. [tflint — Unused Local and Variable After Bootstrap Move](#12-tflint--unused-local-and-variable-after-bootstrap-move)
+13. [Terraform Apply — 403 on All IAM Role Bindings (SA Self-Grant)](#13-terraform-apply--403-on-all-iam-role-bindings-sa-cannot-grant-itself-permissions)
+14. [Cloud SQL / GKE — Missing VPC Private Peering and Wrong depends_on](#14-cloud-sql--gke--missing-vpc-private-peering-and-wrong-depends_on)
 
 ---
 
@@ -562,61 +564,324 @@ Step 4 — Push to main or trigger workflow manually
 
 ---
 
-fixed (infra folder ): resolve IAM 403 by moving role bindings to bootstrap
-The CI service account cannot grant itself IAM permissions — this is a
-chicken-and-egg problem. When iam.tf tried to create google_project_iam_member
-resources, the SA had no rights to read or modify the project IAM policy,
-causing every binding to fail with:
-  Error: Error retrieving IAM policy for project "***":
-  googleapi: Error 403: The caller does not have permission, forbidden
-All five bindings failed simultaneously:
-  - roles/compute.networkAdmin    → compute_admin
-  - roles/container.admin         → container_admin
-  - roles/cloudsql.admin          → cloudsql_admin
-  - roles/storage.admin           → storage_admin
-  - roles/iam.serviceAccountUser  → service_account_user
-This also caused vpc.tf to fail (compute.networks.create) because
-compute.networkAdmin was never successfully granted.
+## 13. Terraform Apply — 403 on All IAM Role Bindings (SA Cannot Grant Itself Permissions)
 
- infra/bootstrap/main.tf  [UPDATED]
-- feat: merged all google_project_iam_member resources from iam.tf into
-  bootstrap, applied once manually by a project admin (not by the CI SA)
-- feat: added roles/resourcemanager.projectIamAdmin binding so the SA can
-  manage project IAM policy reads on subsequent Terraform runs
-- Roles now granted via bootstrap:
-    roles/compute.networkAdmin
-    roles/container.admin
-    roles/cloudsql.admin
-    roles/storage.admin
-    roles/iam.serviceAccountUser
-    roles/resourcemanager.projectIamAdmin
+**Files affected:** `infra/iam.tf`, `infra/bootstrap/main.tf`, `infra/variables.tf`, `.github/workflows/infrastructure.yml`
 
- infra/iam.tf  [CLEARED]
-- fix: removed all google_project_iam_member resource blocks
-- Replaced file content with an explanatory comment pointing to
-  infra/bootstrap/main.tf as the canonical location for IAM grants
-- Main infra/ module no longer attempts to manage project IAM policy
+### 🔴 Error
+```
+google_project_iam_member.compute_admin: Creating...
+google_project_iam_member.container_admin: Creating...
+google_project_iam_member.storage_admin: Creating...
+google_compute_network.vpc: Creating...
+google_project_iam_member.cloudsql_admin: Creating...
+google_project_iam_member.service_account_user: Creating...
 
+│ Error: Request `Create IAM Members roles/compute.networkAdmin serviceAccount:***`
+│ returned error: Final error: Error retrieving IAM policy for project "***":
+│ googleapi: Error 403: The caller does not have permission, forbidden
+│   with google_project_iam_member.compute_admin, on iam.tf line 11
 
- infra/variables.tf
-- fix: removed variable "service_account_email" — no longer referenced
-  by any resource in the main infra/ module after iam.tf was cleared
+│ Error: Request `Create IAM Members roles/container.admin serviceAccount:***`
+│ returned error: Final error: Error retrieving IAM policy for project "***":
+│ googleapi: Error 403: The caller does not have permission, forbidden
+│   with google_project_iam_member.container_admin, on iam.tf line 17
 
- .github/workflows/infrastructure.yml
-- fix: removed -var="service_account_email=${{ secrets.WIF_SERVICE_ACCOUNT }}"
-  from terraform plan command — variable no longer declared in main module;
-  passing an undeclared variable causes terraform plan to exit 1
-Final terraform plan command now passes exactly two -var flags:
-  -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
+│ Error: Request `Create IAM Members roles/cloudsql.admin serviceAccount:***`
+│ returned error: Final error: Error retrieving IAM policy for project "***":
+│ googleapi: Error 403: The caller does not have permission, forbidden
+│   with google_project_iam_member.cloudsql_admin, on iam.tf line 23
+
+│ Error: Request `Create IAM Members roles/storage.admin serviceAccount:***`
+│ returned error: Final error: Error retrieving IAM policy for project "***":
+│ googleapi: Error 403: The caller does not have permission, forbidden
+│   with google_project_iam_member.storage_admin, on iam.tf line 29
+
+│ Error: Request `Create IAM Members roles/iam.serviceAccountUser serviceAccount:***`
+│ returned error: Final error: Error retrieving IAM policy for project "***":
+│ googleapi: Error 403: The caller does not have permission, forbidden
+│   with google_project_iam_member.service_account_user, on iam.tf line 35
+
+│ Error: Error creating Network: googleapi: Error 403:
+│ Required 'compute.networks.create' permission for
+│ 'projects/***/global/networks/ecommerce-vpc', forbidden
+│   with google_compute_network.vpc, on vpc.tf line 1
+```
+
+### 🔍 How We Identified It
+- All five IAM member bindings failed at the same moment
+- The specific error was `Error retrieving IAM policy for project` — not just "can't create", but the SA couldn't even **read** the current IAM policy
+- The VPC creation failure came immediately after — it was a downstream effect because `compute.networkAdmin` was never granted
+- Checked `infra/iam.tf` and confirmed it contained `google_project_iam_member` resources trying to grant roles to `var.service_account_email` — which is the **same service account running Terraform**
+- This is a second chicken-and-egg problem: the SA needs `resourcemanager.projectIamAdmin` to modify IAM, but nobody had granted it that role yet
+
+### 💡 Root Cause
+A service account **cannot grant itself permissions**. To create or modify IAM policy bindings on a GCP project, the caller needs `resourcemanager.projects.setIamPolicy` and `resourcemanager.projects.getIamPolicy` — both included in `roles/resourcemanager.projectIamAdmin`. The CI service account had neither.
+
+`iam.tf` was in the **main CI-managed Terraform module**, which means the same SA that is being granted roles was the one trying to execute the grants. This is a fundamental bootstrap paradox — the SA needs the roles before it can run the code that grants the roles.
+
+```
+iam.tf tries to grant:
+  compute.networkAdmin     ─┐
+  container.admin           │  ALL fail 403
+  cloudsql.admin            │  SA has no rights to
+  storage.admin             │  read/write IAM policy
+  iam.serviceAccountUser   ─┘
+
+vpc.tf also fails:
+  compute.networks.create   ← because compute.networkAdmin was never granted
+```
+
+### ✅ Fix Applied
+
+**Step 1 — Manual prerequisite (run once from your local machine with an admin account):**
+```bash
+PROJECT_ID="ecommerce-devops-498814"
+SA_EMAIL="YOUR_SA@ecommerce-devops-498814.iam.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" --role="roles/compute.networkAdmin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" --role="roles/container.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" --role="roles/cloudsql.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" --role="roles/storage.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" --role="roles/iam.serviceAccountUser"
+```
+
+**Step 2 — Moved all `google_project_iam_member` resources out of `iam.tf` into `infra/bootstrap/main.tf`:**
+
+IAM role grants are now co-located with the WIF pool in bootstrap — both are one-time admin operations that must precede the CI pipeline.
+
+```hcl
+# infra/bootstrap/main.tf (section added)
+locals {
+  sa_member = "serviceAccount:${var.service_account_email}"
+}
+
+resource "google_project_iam_member" "compute_admin" {
+  project = var.project_id
+  role    = "roles/compute.networkAdmin"
+  member  = local.sa_member
+}
+# ... container_admin, cloudsql_admin, storage_admin,
+#     service_account_user, iam_admin (projectIamAdmin)
+```
+
+**Step 3 — Cleared `infra/iam.tf` to comments only:**
+```hcl
+# IAM role grants have been moved to infra/bootstrap/main.tf
+# They must be applied once by a project admin, not by the CI SA.
+```
+
+**Step 4 — Removed `service_account_email` from `variables.tf`** (no longer used in main module):
+```hcl
+# REMOVED
+variable "service_account_email" {
+  type        = string
+  description = "Email of the GitHub Actions service account"
+}
+```
+
+**Step 5 — Removed `-var="service_account_email=..."` from workflow plan command:**
+```yaml
+# BEFORE
+terraform plan \
+  -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
+  -var="db_password=${{ secrets.DB_PASSWORD }}" \
+  -var="service_account_email=${{ secrets.WIF_SERVICE_ACCOUNT }}"  # ← removed
+
+# AFTER — only two vars needed
+terraform plan \
+  -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
   -var="db_password=${{ secrets.DB_PASSWORD }}"
-  (region and zone use defaults from variables.tf)
-Manual prerequisite — run once before re-triggering workflow:
-  PROJECT_ID="ecommerce-devops-498814"
-  SA_EMAIL="YOUR_SA@ecommerce-devops-498814.iam.gserviceaccount.com"
-  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/compute.networkAdmin"
-  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/container.admin"
-  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/cloudsql.admin"
-  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/storage.admin"
-  gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/iam.serviceAccountUser"
+```
 
-*Last updated: 2026-06-16 — 12 issues documented*
+### 📁 Files Changed
+
+| File | Change |
+|---|---|
+| `infra/bootstrap/main.tf` | Added all 6 `google_project_iam_member` resources + `locals.sa_member` |
+| `infra/iam.tf` | Replaced all resources with explanatory comment |
+| `infra/variables.tf` | Removed `variable "service_account_email"` |
+| `.github/workflows/infrastructure.yml` | Removed `-var="service_account_email=..."` from plan command |
+
+> **Rule:** IAM role bindings for a CI service account are a **bootstrap concern**, not a CI concern. The SA cannot manage the permissions that enable it to run. Always grant initial permissions manually via `gcloud` or a separately-applied admin Terraform config.
+
+---
+
+## 14. Cloud SQL / GKE — Missing VPC Private Peering and Wrong `depends_on`
+
+**Files affected:** `infra/vpc.tf`, `infra/cloudsql.tf`, `infra/gke.tf`
+
+### 🔴 Error
+Cloud SQL instance creation failed with a network-related error because Cloud SQL with `ipv4_enabled = false` (private IP only) had no private network path configured. GKE cluster creation also experienced transient network failures due to missing ordering guarantees. The workflow showed errors similar to:
+```
+Error: Error creating DatabaseInstance: googleapi: Error 400:
+Invalid value for field 'instance.settings.ipConfiguration.privateNetwork':
+'projects/***/global/networks/ecommerce-vpc'.
+Network must have private service connection configured.
+```
+And/or Terraform applied Cloud SQL before the VPC peering connection was ready, causing random `500 Internal Error` or `403` failures on the Cloud SQL creation step.
+
+### 🔍 How We Identified It
+- Cloud SQL was configured with `ipv4_enabled = false` and `private_network = google_compute_network.vpc.id`, meaning it **requires** a private service connection to Google's network
+- Checked `vpc.tf` — the file only had `google_compute_network` and `google_compute_subnetwork` blocks. There was **no** `google_compute_global_address` (private IP range reservation) and **no** `google_service_networking_connection` (VPC peering to `servicenetworking.googleapis.com`)
+- Without these two resources, GCP has no allocated IP range on the VPC to route private Cloud SQL traffic through
+- Checked `cloudsql.tf` — `depends_on` pointed at `google_compute_network.vpc` instead of `google_service_networking_connection.private_vpc`. Terraform would consider the network "ready" as soon as the VPC resource was created, without waiting for peering to complete
+- GKE had **no `depends_on` at all** — it could begin cluster creation before the network was fully configured
+
+### 💡 Root Cause
+Two separate problems compounding each other:
+
+**Problem 1 — Missing resources in vpc.tf:**
+`google_compute_global_address` reserves a CIDR block (e.g. `10.0.0.0/16`) in the VPC specifically for Google's internal services. `google_service_networking_connection` establishes the VPC peering to `servicenetworking.googleapis.com` using that reserved range. Without both, Cloud SQL with private IP simply has no network path to reach.
+
+```
+VPC (ecommerce-vpc)
+  │
+  ├─ subnet (10.0.0.0/18)        ← for workloads (pods/services)
+  │
+  └─ private IP range (missing)  ← NEEDED: reserved range for Google services
+       │
+       └─ VPC peering (missing)  ← NEEDED: connects to servicenetworking.googleapis.com
+            │
+            └─ Cloud SQL         ← can only be reached via this path
+```
+
+**Problem 2 — Wrong `depends_on` ordering:**
+Even after adding the peering resources, if `depends_on` only references `google_compute_network.vpc`, Terraform starts creating Cloud SQL as soon as the VPC is created — but peering takes additional time to establish. This causes a race condition where Cloud SQL creation begins before the private network path exists.
+
+### ✅ Fix Applied
+
+**`infra/vpc.tf` — Added two missing resources:**
+```hcl
+# Step 1 — Reserve a private IP range for Google services
+resource "google_compute_global_address" "private_ip" {
+  name          = "private-ip-range"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.vpc.id
+  project       = var.project_id
+}
+
+# Step 2 — Establish VPC peering to servicenetworking.googleapis.com
+resource "google_service_networking_connection" "private_vpc" {
+  network                 = google_compute_network.vpc.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_ip.name]
+}
+```
+
+**`infra/cloudsql.tf` — Corrected `depends_on` to wait for peering:**
+```hcl
+# BEFORE — waits only for VPC to be created, not for peering to complete
+depends_on = [google_compute_network.vpc]
+
+# AFTER — waits for the full peering connection to be established
+depends_on = [google_service_networking_connection.private_vpc]
+```
+
+**`infra/gke.tf` — Added missing `depends_on`:**
+```hcl
+resource "google_container_cluster" "primary" {
+  name     = "ecommerce-cluster"
+  location = var.region
+  project  = var.project_id
+
+  depends_on = [google_service_networking_connection.private_vpc]   # ← added
+
+  # ... rest of config
+}
+```
+
+**Correct resource creation order after fix:**
+```
+google_compute_network.vpc
+  └─► google_compute_global_address.private_ip
+        └─► google_service_networking_connection.private_vpc
+              ├─► google_sql_database_instance.postgres   (depends_on peering)
+              └─► google_container_cluster.primary        (depends_on peering)
+```
+
+### 📁 Files Changed
+
+| File | Change |
+|---|---|
+| `infra/vpc.tf` | Added `google_compute_global_address.private_ip` and `google_service_networking_connection.private_vpc` |
+| `infra/cloudsql.tf` | Changed `depends_on` from `google_compute_network.vpc` → `google_service_networking_connection.private_vpc` |
+| `infra/gke.tf` | Added `depends_on = [google_service_networking_connection.private_vpc]` to cluster resource |
+
+> **Rule:** Any resource that uses Cloud SQL private IP (`ipv4_enabled = false`) requires **both** a reserved IP range (`google_compute_global_address` with `purpose = VPC_PEERING`) and a service networking peering connection (`google_service_networking_connection`) in the same VPC. Always set `depends_on` to point at the peering connection, not just the VPC network.
+
+---
+
+## Master Summary — All Issues Found & Fixed
+
+| # | Area | Issue | Status |
+|---|---|---|---|
+| 1 | CI/CD | Artifact upload had no `if:` guard — uploaded nothing when plan was skipped | ✅ Fixed |
+| 2 | Terraform | `gke.tf`, `cloudsql.tf`, `vpc.tf` were 0-byte empty files — nothing to plan | ✅ Fixed |
+| 3 | Terraform | `> plan.json` swallowed stderr — all errors invisible in logs | ✅ Fixed |
+| 4 | Terraform | `github_repo` not passed via `-var` — plan hung on interactive prompt | ✅ Fixed |
+| 5 | GCP IAM | WIF pool in `iam.tf` tried to recreate existing pool — chicken-and-egg 403 | ✅ Fixed |
+| 6 | GCP IAM | Service account had zero infrastructure permissions — all API calls 403 | ✅ Fixed (gcloud) |
+| 7 | Cloud SQL | `require_ssl` removed in provider v5+ — replaced with `ssl_mode` | ✅ Fixed |
+| 8 | Terraform | `output "gke_cluster_name"` never declared — apply job `terraform output` failed | ✅ Fixed |
+| 9 | Terraform | `service_account_email` declared in both `iam.tf` and `variables.tf` — duplicate var | ✅ Fixed |
+| 10 | Terraform | `local.github_repo` and `var.github_repo` orphaned after bootstrap split — tflint exit 2 | ✅ Fixed |
+| 11 | GCP IAM | SA tried to grant itself roles via `iam.tf` — can't read/write its own IAM policy | ✅ Fixed |
+| 12 | Kubernetes | `selector.matchLabels` missing `version: v1` — mismatch with pod template labels | ✅ Fixed |
+| 13 | Kubernetes | Frontend Service `type: LoadBalancer` — bypassed Ingress, TLS, and routing rules | ✅ Fixed |
+| 14 | Kubernetes | `order-service` and `frontend` missing `securityContext` hardening | ✅ Fixed |
+| 15 | Kubernetes | Frontend referenced `serviceAccountName: frontend` — no ServiceAccount declared | ✅ Fixed |
+| 16 | Kubernetes | No PDB, no anti-affinity, no startupProbe, no `/tmp` volume on `frontend` | ✅ Fixed |
+| 17 | Terraform | `vpc.tf` missing VPC private peering; `depends_on` pointed at VPC not peering — Cloud SQL/GKE race condition | ✅ Fixed |
+
+---
+
+## Required GitHub Actions Secrets
+
+| Secret | Description |
+|---|---|
+| `GCP_PROJECT_ID` | GCP project ID (e.g. `ecommerce-devops-498814`) |
+| `WIF_PROVIDER` | Full WIF provider name (output from bootstrap) |
+| `WIF_SERVICE_ACCOUNT` | Service account email used by GitHub Actions |
+| `DB_PASSWORD` | Cloud SQL app user password |
+| `SLACK_WEBHOOK_URL` | Optional — Slack webhook for deployment notifications |
+
+---
+
+## Infra Deployment Order (First Time Setup)
+
+```
+Step 1 — Bootstrap (manual, run once by a project admin)
+  cd infra/bootstrap
+  terraform init
+  terraform apply \
+    -var="project_id=YOUR_PROJECT_ID" \
+    -var="github_repo=OWNER/REPO" \
+    -var="service_account_email=YOUR_SA@PROJECT.iam.gserviceaccount.com"
+
+  This creates: WIF pool, WIF provider, WIF→SA binding, and all IAM role grants.
+
+Step 2 — Add GitHub Actions secrets
+  GCP_PROJECT_ID, WIF_PROVIDER, WIF_SERVICE_ACCOUNT, DB_PASSWORD
+
+Step 3 — Push to main or trigger workflow manually
+  The CI/CD pipeline handles terraform plan → apply automatically.
+  Only two -var flags are needed:
+    -var="project_id=..."
+    -var="db_password=..."
+```
+
+---
+
+*Last updated: 2026-06-19 — 17 issues documented across Terraform, GCP IAM, CI/CD, and Kubernetes*

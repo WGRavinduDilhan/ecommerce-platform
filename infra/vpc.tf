@@ -21,3 +21,20 @@ resource "google_compute_subnetwork" "subnet" {
     ip_cidr_range = "10.52.0.0/20"
   }
 }
+
+# Private IP address range for Cloud SQL private connectivity
+resource "google_compute_global_address" "private_ip" {
+  name          = "private-ip-range"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.vpc.id
+  project       = var.project_id
+}
+
+# VPC peering to Google's service networking (required for Cloud SQL private IP)
+resource "google_service_networking_connection" "private_vpc" {
+  network                 = google_compute_network.vpc.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_ip.name]
+}
