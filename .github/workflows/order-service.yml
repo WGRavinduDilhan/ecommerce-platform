@@ -26,13 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     name: Test Order Service
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           token: ${{ secrets.CI_REPO_PAT || github.token }}
           fetch-depth: 1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -72,17 +72,17 @@ jobs:
       image-tag: ${{ steps.meta.outputs.tags }}
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           token: ${{ secrets.CI_REPO_PAT || github.token }}
           fetch-depth: 1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Authenticate to GCP
         id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         if: github.event_name != 'pull_request'
         with:
           token_format: 'access_token'
@@ -90,7 +90,7 @@ jobs:
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Log in to Google Artifact Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         if: github.event_name != 'pull_request'
         with:
           registry: ${{ env.REGISTRY }}
@@ -99,7 +99,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -109,7 +109,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ./services/order-service
           push: ${{ github.event_name != 'pull_request' }}
@@ -129,28 +129,28 @@ jobs:
       id-token: write
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           token: ${{ secrets.CI_REPO_PAT || github.token }}
           fetch-depth: 1
 
       - name: Authenticate to GCP
         id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           token_format: 'access_token'
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Log in to Google Artifact Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
 
       - name: Run Trivy scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@cf5c088a69634cd13ccddc735d7926162c31f9a6 # master
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           format: 'sarif'
@@ -158,7 +158,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -177,19 +177,19 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           token: ${{ secrets.CI_REPO_PAT || github.token }}
           fetch-depth: 1
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@e30db14379863a8c79331b04a9969f4c1e225e0b # v1
 
       - name: Install GKE auth plugin
         run: gcloud components install gke-gcloud-auth-plugin --quiet
@@ -197,24 +197,22 @@ jobs:
       - name: Get GKE credentials
         env:
           USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           gcloud container clusters get-credentials ecommerce-cluster \
             --zone us-central1 \
-            --project ${{ secrets.GCP_PROJECT_ID }}
+            --project "$GCP_PROJECT_ID"
 
       - name: Ensure namespace exists
         run: |
           kubectl create namespace ecommerce-staging --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy manifests
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
+          sed -i "s|PROJECT_ID|$GCP_PROJECT_ID|g; s|:v1.0.0|:${{ github.sha }}|g" k8s/order-service/deployment.yaml
           kubectl apply -f k8s/order-service/deployment.yaml -n ecommerce-staging
-
-      - name: Update image to latest build
-        run: |
-          kubectl set image deployment/order-service \
-            order-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            -n ecommerce-staging
 
       - name: Wait for rollout
         run: |
@@ -234,19 +232,19 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           token: ${{ secrets.CI_REPO_PAT || github.token }}
           fetch-depth: 1
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@e30db14379863a8c79331b04a9969f4c1e225e0b # v1
 
       - name: Install GKE auth plugin
         run: gcloud components install gke-gcloud-auth-plugin --quiet
@@ -254,24 +252,22 @@ jobs:
       - name: Get GKE credentials
         env:
           USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           gcloud container clusters get-credentials ecommerce-cluster \
             --zone us-central1 \
-            --project ${{ secrets.GCP_PROJECT_ID }}
+            --project "$GCP_PROJECT_ID"
 
       - name: Ensure namespace exists
         run: |
           kubectl create namespace ecommerce --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy manifests
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
+          sed -i "s|PROJECT_ID|$GCP_PROJECT_ID|g; s|:v1.0.0|:${{ github.sha }}|g" k8s/order-service/deployment.yaml
           kubectl apply -f k8s/order-service/deployment.yaml -n ecommerce
-
-      - name: Update image to latest build
-        run: |
-          kubectl set image deployment/order-service \
-            order-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            -n ecommerce
 
       - name: Wait for rollout
         run: |
@@ -281,7 +277,7 @@ jobs:
 
       - name: Notify Slack
         if: success()
-        uses: 8398a7/action-slack@v3
+        uses: 8398a7/action-slack@77eaa4f1c608a7d68b38af4e3f739dcd8cba273e # v3
         with:
           status: success
           text: 'Order Service deployed to production'

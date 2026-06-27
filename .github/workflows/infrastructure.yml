@@ -24,7 +24,7 @@ jobs:
       WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Check Google Cloud credentials
         id: creds
@@ -36,20 +36,20 @@ jobs:
           fi
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Authenticate to Google Cloud
         if: steps.creds.outputs.has_creds == 'true'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         if: steps.creds.outputs.has_creds == 'true'
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@e30db14379863a8c79331b04a9969f4c1e225e0b # v1
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
@@ -73,7 +73,7 @@ jobs:
           terraform validate
 
       - name: Run tflint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@90f302c255ef959cbfb4bd10581afecdb7ece3e6 # v4
         with:
           tflint_version: v0.50.0
 
@@ -86,18 +86,21 @@ jobs:
       - name: Plan Terraform
         id: plan
         if: steps.creds.outputs.has_creds == 'true'
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -o pipefail
           cd infra
           terraform plan \
-            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
-            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="project_id=$GCP_PROJECT_ID" \
+            -var="db_password=$DB_PASSWORD" \
             -out=tfplan 2>&1 | tee plan.log
           terraform show -json tfplan > plan.json
 
       - name: Comment PR with plan
         if: github.event_name == 'pull_request' && steps.creds.outputs.has_creds == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const comment = `Terraform plan completed successfully for this PR.
@@ -114,7 +117,7 @@ jobs:
       # CRITICAL: only upload when plan actually ran and produced tfplan
       - name: Upload plan
         if: steps.creds.outputs.has_creds == 'true' && steps.plan.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: terraform-plan
           path: |
@@ -135,7 +138,7 @@ jobs:
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Check Google Cloud credentials
         id: creds
@@ -149,20 +152,20 @@ jobs:
           fi
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Authenticate to Google Cloud
         if: steps.creds.outputs.has_creds == 'true'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         if: steps.creds.outputs.has_creds == 'true'
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@e30db14379863a8c79331b04a9969f4c1e225e0b # v1
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
@@ -175,7 +178,7 @@ jobs:
       # Downloads the tfplan produced and uploaded by terraform-plan job
       - name: Download plan
         if: steps.creds.outputs.has_creds == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: terraform-plan
           path: infra/
@@ -203,7 +206,7 @@ jobs:
 
       - name: Notify Slack
         if: always()
-        uses: 8398a7/action-slack@v3
+        uses: 8398a7/action-slack@77eaa4f1c608a7d68b38af4e3f739dcd8cba273e # v3
         with:
           status: ${{ job.status }}
           text: 'Infrastructure deployment - Cluster: ${{ steps.outputs.outputs.cluster_name }}'
@@ -218,7 +221,7 @@ jobs:
       WIF_SERVICE_ACCOUNT: ${{ secrets.WIF_SERVICE_ACCOUNT }}
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Check Google Cloud credentials
         id: creds
@@ -230,20 +233,20 @@ jobs:
           fi
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Authenticate to Google Cloud
         if: steps.creds.outputs.has_creds == 'true'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         if: steps.creds.outputs.has_creds == 'true'
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@e30db14379863a8c79331b04a9969f4c1e225e0b # v1
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
