@@ -208,13 +208,8 @@ jobs:
 
       - name: Deploy manifests
         run: |
+          sed -i "s|IMAGE_PLACEHOLDER|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|g" k8s/order-service/deployment.yaml
           kubectl apply -f k8s/order-service/deployment.yaml -n ecommerce-staging
-
-      - name: Update image to latest build
-        run: |
-          kubectl set image deployment/order-service \
-            order-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            -n ecommerce-staging
 
       - name: Wait for rollout
         run: |
@@ -265,13 +260,8 @@ jobs:
 
       - name: Deploy manifests
         run: |
+          sed -i "s|IMAGE_PLACEHOLDER|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|g" k8s/order-service/deployment.yaml
           kubectl apply -f k8s/order-service/deployment.yaml -n ecommerce
-
-      - name: Update image to latest build
-        run: |
-          kubectl set image deployment/order-service \
-            order-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            -n ecommerce
 
       - name: Wait for rollout
         run: |

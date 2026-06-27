@@ -24,7 +24,7 @@ spec:
         runAsUser: 1000
       containers:
         - name: product-service
-          image: us-central1-docker.pkg.dev/PROJECT_ID/ecommerce-images/product-service:latest
+          image: IMAGE_PLACEHOLDER
           ports:
             - containerPort: 8000
           resources:

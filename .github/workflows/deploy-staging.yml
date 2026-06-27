@@ -20,6 +20,8 @@ env:
 jobs:
   deploy-staging:
     runs-on: ubuntu-latest
+    env:
+      USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
     environment:
       name: staging
     
@@ -38,12 +40,15 @@ jobs:
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install GKE auth plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
 
       - name: Get GKE credentials
         run: |
           gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} \
-            --zone ${{ env.GKE_ZONE }} \
+            --region ${{ env.GKE_ZONE }} \
             --project ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Set up kubectl
