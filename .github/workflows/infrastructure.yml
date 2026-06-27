@@ -86,12 +86,15 @@ jobs:
       - name: Plan Terraform
         id: plan
         if: steps.creds.outputs.has_creds == 'true'
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -o pipefail
           cd infra
           terraform plan \
-            -var="project_id=${{ secrets.GCP_PROJECT_ID }}" \
-            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="project_id=$GCP_PROJECT_ID" \
+            -var="db_password=$DB_PASSWORD" \
             -out=tfplan 2>&1 | tee plan.log
           terraform show -json tfplan > plan.json
 

@@ -216,18 +216,21 @@ jobs:
       - name: Get GKE credentials
         env:
           USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           gcloud container clusters get-credentials ecommerce-cluster \
             --zone us-central1 \
-            --project ${{ secrets.GCP_PROJECT_ID }}
+            --project "$GCP_PROJECT_ID"
 
       - name: Ensure namespace exists
         run: |
           kubectl create namespace ecommerce-staging --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy manifests
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
-          sed -i "s|PROJECT_ID|${{ secrets.GCP_PROJECT_ID }}|g; s|:v1.0.0|:${{ github.sha }}|g" k8s/product-service/deployment.yaml
+          sed -i "s|PROJECT_ID|$GCP_PROJECT_ID|g; s|:v1.0.0|:${{ github.sha }}|g" k8s/product-service/deployment.yaml
           kubectl apply -f k8s/product-service/deployment.yaml -n ecommerce-staging
 
       - name: Wait for rollout
@@ -272,18 +275,21 @@ jobs:
       - name: Get GKE credentials
         env:
           USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
           gcloud container clusters get-credentials ecommerce-cluster \
             --zone us-central1 \
-            --project ${{ secrets.GCP_PROJECT_ID }}
+            --project "$GCP_PROJECT_ID"
 
       - name: Ensure namespace exists
         run: |
           kubectl create namespace ecommerce --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy manifests
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
-          sed -i "s|PROJECT_ID|${{ secrets.GCP_PROJECT_ID }}|g; s|:v1.0.0|:${{ github.sha }}|g" k8s/product-service/deployment.yaml
+          sed -i "s|PROJECT_ID|$GCP_PROJECT_ID|g; s|:v1.0.0|:${{ github.sha }}|g" k8s/product-service/deployment.yaml
           kubectl apply -f k8s/product-service/deployment.yaml -n ecommerce
 
       - name: Wait for rollout
