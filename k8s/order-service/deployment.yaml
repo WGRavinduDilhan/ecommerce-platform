@@ -24,7 +24,7 @@ spec:
         runAsUser: 1000
       containers:
         - name: order-service
-          image: IMAGE_PLACEHOLDER
+          image: us-central1-docker.pkg.dev/PROJECT_ID/ecommerce-images/order-service:v1.0.0
           ports:
             - containerPort: 3000
           resources:
